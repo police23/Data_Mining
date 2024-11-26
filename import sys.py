@@ -81,42 +81,60 @@ class Apriori:
         return rules
 
 
-class KMeansClustering:
+class KMeans:
     def __init__(self, k, max_iterations=100):
         self.k = k
         self.max_iterations = max_iterations
-        self.centroids = None
-        self.clusters = None
+        self.centroids = []
 
-    def fit(self, X):
-        self.centroids = X[np.random.choice(X.shape[0], self.k, replace=False)]
+    def fit(self, data):
+        n_samples, n_features = data.shape
+        
+        # Initialize centroids randomly from data points
+        self.centroids = data[np.random.choice(n_samples, self.k, replace=False)]
+
+
+        # Initialize partition matrix U0
+        U = np.zeros((n_samples, self.k))
+        for i, point in enumerate(data):
+             distances = [np.linalg.norm(point - centroid) for centroid in self.centroids]
+             cluster_index = np.argmin(distances)
+             U[i, cluster_index] = 1
+
         for _ in range(self.max_iterations):
-            self.clusters = self.create_clusters(X)
-            new_centroids = self.calculate_new_centroids(X)
-            if np.all(self.centroids == new_centroids):
-                break
-            self.centroids = new_centroids
+            prev_U = U.copy() # Previous U for checking stop condition
 
-    def create_clusters(self, X):
-        clusters = [[] for _ in range(self.k)]
-        for idx, sample in enumerate(X):
-            closest_centroid = np.argmin(np.sqrt(np.sum((sample - self.centroids) ** 2, axis=1)))
-            clusters[closest_centroid].append(idx)
-        return clusters
 
-    def calculate_new_centroids(self, X):
-        new_centroids = np.zeros((self.k, X.shape[1]))
-        for idx, cluster in enumerate(self.clusters):
-            new_centroid = np.mean(X[cluster], axis=0)
-            new_centroids[idx] = new_centroid
-        return new_centroids
 
-    def predict(self, X):
-        predictions = np.zeros(X.shape[0])
-        for idx, sample in enumerate(X):
-            closest_centroid = np.argmin(np.sqrt(np.sum((sample-self.centroids)**2, axis=1)))
-            predictions[idx] = closest_centroid
-        return predictions
+            # Calculate cluster centers (centroids)
+            centroids = []
+
+            for j in range(self.k):  # Calculate centroids for each cluster
+                cluster_points_indices = np.where(U[:, j] == 1)[0] # Check which points belong to current cluster
+                if cluster_points_indices.size > 0:
+                    cluster_points = data[cluster_points_indices]
+                    centroid = np.mean(cluster_points, axis=0)
+                    centroids.append(centroid)
+                else:
+                    centroids.append(self.centroids[j])
+
+
+
+            self.centroids = np.array(centroids)
+
+            # Update partition matrix
+            U = np.zeros((n_samples, self.k))
+            for i, point in enumerate(data):
+                 distances = [np.linalg.norm(point - centroid) for centroid in self.centroids]
+                 cluster_index = np.argmin(distances)
+                 U[i, cluster_index] = 1
+
+
+            if np.array_equal(U, prev_U):  # Stop if partition matrix doesn't change
+                 break
+
+
+        return U, self.centroids 
 
 class DecisionTreeGenerator:
     def __init__(self, label, criterion):  # Add criterion parameter
@@ -727,14 +745,6 @@ class MainWindow(QWidget):
                 self.raw_calculate_button.clicked.connect(self.calculate_raw)
 
             elif i == 5: 
-                kmeans_layout = QVBoxLayout()
-
-                self.k_spinbox = QSpinBox()
-                self.k_spinbox.setMinimum(2)
-                self.k_spinbox.setValue(3)  # Default k
-                kmeans_layout.addWidget(QLabel("Giá trị của k:"))
-                kmeans_layout.addWidget(self.k_spinbox)
-
                 self.kmeans_load_button = QPushButton("Upload file .CSV")
                 self.kmeans_load_button.setStyleSheet("""
                     QPushButton {
@@ -753,19 +763,51 @@ class MainWindow(QWidget):
                         background-color: #4CAF50; /* Brighter green when pressed */
                     }
                 """)
-                self.kmeans_load_button.clicked.connect(self.perform_kmeans)
-                kmeans_layout.addWidget(self.kmeans_load_button)
+
+
+                self.k_input = QLineEdit("2")  # Input for k with default 2
+                self.kmeans_calculate_button = QPushButton("Tính toán")
+                self.kmeans_calculate_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: #2E7D32; /* Green background */
+                        color: white;            /* White text */
+                        font-weight: bold;       /* Bold text */
+                        border: none;            /* No border */
+                        padding: 8px 16px;      /* Padding around text */
+                        border-radius: 4px;
+                        font-size : 20px;      /* Rounded corners */
+                    }
+                    QPushButton:hover {
+                        background-color: #1B5E20; /* Darker green on hover */
+                    }
+                    QPushButton:pressed {
+                        background-color: #4CAF50; /* Brighter green when pressed */
+                    }
+                """)
+
 
                 self.kmeans_result_text = QTextEdit()
                 self.kmeans_result_text.setReadOnly(True)
-                kmeans_layout.addWidget(self.kmeans_result_text) 
+                self.kmeans_result_text.setStyleSheet("""
+                    QTextEdit {
+                        font-size: 25pt;
+                    }
+                """)
 
-                self.figure = plt.figure()
-                self.canvas = FigureCanvas(self.figure)
-                kmeans_layout.addWidget(self.canvas)
+                kmeans_layout = QVBoxLayout()
+                kmeans_layout.addWidget(QLabel("Tải tập dữ liệu:", font=QFont("Arial", 12)))
+                kmeans_layout.addWidget(self.kmeans_load_button)
+                kmeans_layout.addWidget(QLabel("Nhập k:", font=QFont("Arial", 12)))
+                kmeans_layout.addWidget(self.k_input)
+                kmeans_layout.addWidget(self.kmeans_calculate_button)
+                kmeans_layout.addWidget(QLabel("Kết quả:", font=QFont("Arial", 12)))
+                kmeans_layout.addWidget(self.kmeans_result_text, stretch=1)
+
 
                 tab.setLayout(kmeans_layout)
 
+                self.kmeans_load_button.clicked.connect(self.load_data_kmeans)
+                self.kmeans_calculate_button.clicked.connect(self.run_kmeans)
            
 
 
@@ -1005,42 +1047,71 @@ class MainWindow(QWidget):
         except Exception as e:
             self.nb_laplace_result_text.append(f"Lỗi: {e}")
 
-    def perform_kmeans(self):
+    def load_data_kmeans(self):  # New method to load data for KMeans
+
         options = QFileDialog.Options()
-        file_path, _ = QFileDialog.getOpenFileName(self, "Chọn tập dữ liệu", "", "CSV Files (*.csv);;All Files (*)", options=options)
-        if file_path:
+        filepath, _ = QFileDialog.getOpenFileName(self, "Chọn tập dữ liệu", "", "CSV Files (*.csv);;All Files (*)", options=options)
+
+        if filepath:
             try:
-                df = pd.read_csv(file_path)
-                k = self.k_spinbox.value()
+               self.kmeans_result_text.clear()
+               self.kmeans_data = pd.read_csv(filepath) # Loads numerical data
+               if 'X' in self.kmeans_data.columns: # Remove the unnecessary column 'X' if it's in the dataframe
+                    self.kmeans_data = self.kmeans_data.drop(columns=['X'])
 
-                if len(df.columns) < 2:
-                    raise ValueError("Dữ liệu phải có ít nhất hai cột cho phân cụm K-Means.")
-
-
-
-                X = df.values  # NumPy array of your data
-
-                kmeans = KMeansClustering(k)
-                kmeans.fit(X)
-                predictions = kmeans.predict(X)
+               self.kmeans_data = self.kmeans_data.apply(pd.to_numeric, errors='coerce').dropna()
+               self.kmeans_data = self.kmeans_data.values # Convert to numpy array for more efficient calculation
 
 
-
-                self.figure.clear() # Clear any previous plot
-                ax = self.figure.add_subplot(111) # Get the axes
-
-                for i in range(k):
-                    ax.scatter(X[predictions == i, 0], X[predictions == i, 1], label=f'Cụm {i+1}')
-                ax.scatter(kmeans.centroids[:, 0], kmeans.centroids[:, 1], s=100, c='black', marker='x', label='Tâm')
-
-                ax.set_xlabel(df.columns[0])
-                ax.set_ylabel(df.columns[1])
-                ax.legend()
-                self.canvas.draw() # Redraw the canvas
 
 
             except Exception as e:
-                QMessageBox.critical(self, "Lỗi", str(e))
+               self.kmeans_result_text.append(f"Lỗi khi tải dữ liệu: {e}")
+
+
+    def run_kmeans(self): # Run k-means clustering
+        try:
+            self.kmeans_result_text.clear()
+            k = int(self.k_input.text())
+
+
+            kmeans = KMeans(k)
+            U, centroids = kmeans.fit(self.kmeans_data)
+
+
+            data_point_labels = [f"X{i + 1}" for i in range(len(self.kmeans_data))]
+
+            cluster_labels = [f"C{i + 1}" for i in range(k)]  # Cluster labels C1, C2,...
+
+
+            header = "M\t" + "\t".join(data_point_labels) # Construct the header of the partition matrix output
+            matrix_string = "" # Store the partition matrix as a string
+
+            for j in range(len(cluster_labels)):
+              row = f"{cluster_labels[j]}\t"
+              for i in range(len(data_point_labels)): # Iterating through elements in the matrix
+                   row += f"{int(U[i][j])}\t"  # Display 0 or 1 and tab for allignment
+              matrix_string += row + "\n"
+
+            self.kmeans_result_text.append(f"{header}\n{matrix_string}") # add to output
+
+
+            self.kmeans_result_text.append("\nTrọng tâm các cụm:") # Print centroids
+            for i, centroid in enumerate(centroids):
+                self.kmeans_result_text.append(f"C{i+1}: {centroid.tolist()}")
+
+
+            self.kmeans_result_text.append("\nKết quả phân cụm:")
+            cluster_assignments = np.argmax(U, axis=1)
+
+            for i in range(k):
+                cluster_indices = np.where(cluster_assignments == i)[0]
+                cluster_points_labels = [data_point_labels[idx] for idx in cluster_indices]
+                self.kmeans_result_text.append(f"\nCụm {i + 1}: {cluster_points_labels}")
+
+
+        except Exception as e:
+            self.kmeans_result_text.append(f"Lỗi: {e}")
     
     
 
