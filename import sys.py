@@ -3,7 +3,7 @@ import math
 import sys
 from tkinter.font import Font
 import pandas as pd
-from PyQt5.QtWidgets import (QApplication, QFormLayout, QLineEdit, QWidget, QTabWidget, QVBoxLayout, 
+from PyQt5.QtWidgets import (QApplication, QFormLayout, QHBoxLayout, QLineEdit, QWidget, QTabWidget, QVBoxLayout, 
                              QLabel, QStackedWidget, QPushButton, QTextEdit, QFileDialog, QComboBox, QSizePolicy,
                              QSpinBox, QDoubleSpinBox, QMessageBox, QListWidget, QAbstractItemView)
 from PyQt5.QtGui import QIcon
@@ -19,64 +19,92 @@ from collections import defaultdict
 
 class Apriori:
     def __init__(self, min_support, data):
-        self.min_support = min_support * len(data)
+        self.min_support = min_support
         self.data = data
         self.frequent_itemsets = []
 
+
     def generate_frequent_itemsets(self):
-        unique_items = sorted(set(item for transaction in self.data for item in transaction))
-        all_frequent_itemsets = []
-        k = 1
+        item_counts = defaultdict(int)
+        for transaction in self.data:
+            for item in transaction:
+                item_counts[item] += 1
+
+        # Correctly generate frequent 1-itemsets
+        self.frequent_itemsets = [
+            {frozenset([item]): count for item, count in item_counts.items() if count >= self.min_support}
+        ]
+
+        k = 2
         while True:
-            frequent_k_itemsets = self.find_frequent_itemsets(unique_items, k)
-            if not frequent_k_itemsets:
+            candidate_itemsets = self.generate_candidate_itemsets(self.frequent_itemsets[-1], k)  # Correct candidate generation
+
+
+            if not candidate_itemsets:  # If no more candidates, stop
                 break
-            all_frequent_itemsets.extend(frequent_k_itemsets)
 
 
-            items_for_next_k = set() # To remove duplicate
-            for itemset, _ in frequent_k_itemsets:  # Use all frequent items from current k-level
-                items_for_next_k.update(itemset)
-            unique_items = sorted(list(items_for_next_k))
+            candidate_counts = defaultdict(int)  # Count candidate itemsets
+            for transaction in self.data:  # Corrected support counting for k>2
+                for itemset in candidate_itemsets:
+                    if itemset.issubset(set(transaction)):
+                       candidate_counts[itemset] += 1
 
+
+
+            frequent_k_itemsets = {itemset: count for itemset, count in candidate_counts.items() if count >= self.min_support} # Check each itemset against min_support
+
+            if not frequent_k_itemsets:  # No frequent itemsets, done
+                break
+
+
+            self.frequent_itemsets.append(frequent_k_itemsets) # Correctly add to self.frequent_itemsets
             k += 1
 
-        self.frequent_itemsets = all_frequent_itemsets
 
 
+    def generate_candidate_itemsets(self, frequent_itemsets, k): # Must check if the subset of the candidate is in the frequent itemsets
+         candidates = set()
+         for itemset1 in frequent_itemsets:
+             for itemset2 in frequent_itemsets:
 
-    def find_frequent_itemsets(self, items, k):
-        candidate_itemsets = list(combinations(items, k))
-        frequent_k_itemsets = []
+                 union = itemset1.union(itemset2)
 
-        for itemset in candidate_itemsets:
-            count = 0 # reset count for each itemset
-            for transaction in self.data: # Count based on transactions in self.data
-                if set(itemset).issubset(transaction):
-                    count += 1
+                 if len(union) == k:  # Check size after union
+
+                     is_candidate = True
+                     for subset in combinations(union, k - 1):  # Generate subsets of size k-1 and check if frequent
+
+                         if frozenset(subset) not in frequent_itemsets:
+                             is_candidate = False
+                             break
+
+                     if is_candidate:  #If all subsets are frequent, add it to candidates set
+                         candidates.add(union)
+
+         return list(candidates)
 
 
-            if count >= self.min_support:
-                frequent_k_itemsets.append((set(itemset), count))
-
-        return frequent_k_itemsets
-
-    def generate_association_rules(self, min_confidence):
-
+    def generate_association_rules(self, min_confidence):  # Corrected method
         rules = []
-        for itemset, support in self.frequent_itemsets:  # Corrected iteration
-             if isinstance(itemset, tuple) and len(itemset) > 1:  # Filter size 2 or greater
+        for k_itemsets in self.frequent_itemsets[1:]:  # Iterate through frequent itemsets starting from k=2
+            for itemset, support in k_itemsets.items():  # Get support of the current k-itemsets
+                for i in range(1, len(itemset)):       # Iterate through all possible subset sizes for antecedents
+                    for antecedent in combinations(itemset, i):   # Generate all possible antecedents
 
-                for i in range(1, len(itemset)):
-                     for antecedent in combinations(itemset, i):
-                         consequent = tuple(sorted(set(itemset) - set(antecedent)))
-                         support_antecedent = sum(1 for transaction in self.data if set(antecedent).issubset(set(transaction)))
-
-                         confidence = support / support_antecedent if support_antecedent > 0 else 0
+                        consequent = tuple(sorted(set(itemset) - set(antecedent)))  # Calculate the corresponding consequent
 
 
-                         if confidence >= min_confidence:
-                               rules.append((antecedent, consequent, confidence))
+
+                        support_antecedent = 0
+                        for transaction in self.data:
+                            if set(antecedent).issubset(set(transaction)):
+                                 support_antecedent += 1
+
+                        confidence = support / support_antecedent if support_antecedent > 0 else 0 # Correct confidence calculation. Zero check
+
+                        if confidence >= min_confidence:
+                            rules.append((set(antecedent), set(consequent), confidence))
 
         return rules
 
@@ -481,6 +509,7 @@ class MainWindow(QWidget):
                         font-size: 15pt; 
                     }
                 """)
+
                 self.min_support_input = QDoubleSpinBox()
                 self.min_support_input.setRange(0.0, 1.0)
                 self.min_support_input.setSingleStep(0.01)
@@ -488,25 +517,71 @@ class MainWindow(QWidget):
                 self.min_confidence_input = QDoubleSpinBox()
                 self.min_confidence_input.setRange(0.0, 1.0)
                 self.min_confidence_input.setSingleStep(0.01)
+                self.apriori_calculate_button = QPushButton("Tính toán")
+                self.apriori_calculate_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: #2E7D32; /* Green background */
+                        color: white;            /* White text */
+                        font-weight: bold;       /* Bold text */
+                        border: none;            /* No border */
+                        padding: 8px 16px;      /* Padding around text */
+                        border-radius: 4px;
+                        font-size : 20px;      /* Rounded corners */
+                    }
+                    QPushButton:hover {
+                        background-color: #1B5E20; /* Darker green on hover */
+                    }
+                    QPushButton:pressed {
+                        background-color: #4CAF50; /* Brighter green when pressed */
+                    }
+                """)
+                self.apriori_calculate_button.clicked.connect(self.run_apriori)
+
+                self.frequent_itemsets_text = QTextEdit() # Create QTextEdits *before* adding to layout
+                self.frequent_itemsets_text.setReadOnly(True)
+                self.frequent_itemsets_text.setStyleSheet("font-size: 12pt;")
 
 
+                self.maximal_itemsets_text = QTextEdit()
+                self.maximal_itemsets_text.setReadOnly(True)
+                self.maximal_itemsets_text.setStyleSheet("font-size: 12pt;")
+
+
+
+                self.association_rules_text = QTextEdit()
+                self.association_rules_text.setReadOnly(True)
+                self.association_rules_text.setStyleSheet("font-size: 12pt;")
+                self.apriori_filepath_display = QLineEdit()  # Create the QLineEdit HERE
+                self.apriori_filepath_display.setReadOnly(True)
 
                 apriori_layout = QVBoxLayout()
                 apriori_layout.addWidget(QLabel("Tải tập dữ liệu:", font=QFont("Arial", 12)))
                 apriori_layout.addWidget(self.apriori_load_button)
+                apriori_layout.addWidget(self.apriori_filepath_display)
 
-                # Add input fields for min_support and min_confidence
-                apriori_layout.addWidget(QLabel("Min Support:", font=QFont("Arial", 12)))
-                apriori_layout.addWidget(self.min_support_input)
-                apriori_layout.addWidget(QLabel("Min Confidence:", font=QFont("Arial", 12)))
-                apriori_layout.addWidget(self.min_confidence_input)
-                apriori_layout.addWidget(self.apriori_calculate_button)  # Trigger calculation
+                #Inputs for Apriori
+                input_layout = QHBoxLayout() # Horizontal layout for inputs
+                min_support_layout = QVBoxLayout() # Vertical for min support
+                min_support_layout.addWidget(QLabel("Min Support:", font=QFont("Arial", 12)))
+                min_support_layout.addWidget(self.min_support_input)
+                self.min_support_input.setStyleSheet("QDoubleSpinBox { font-size: 12pt;  height: 30px;}")
 
+                input_layout.addLayout(min_support_layout)
+                min_confidence_layout = QVBoxLayout() # Vertical for min confidence
+                min_confidence_layout.addWidget(QLabel("Min Confidence:", font=QFont("Arial", 12)))
+                min_confidence_layout.addWidget(self.min_confidence_input)
+                self.min_confidence_input.setStyleSheet("QDoubleSpinBox { font-size: 12pt; height: 30px; }")
+                input_layout.addLayout(min_confidence_layout)
+                apriori_layout.addLayout(input_layout) # Now add to main layout
+                apriori_layout.addWidget(self.apriori_calculate_button)
 
+                apriori_layout.addWidget(QLabel("Các tập phổ biến thỏa ngưỡng:", font=QFont("Arial", 12)))
+                apriori_layout.addWidget(self.frequent_itemsets_text, stretch=1) # Added to layout
 
-                apriori_layout.addWidget(QLabel("Kết quả:", font=QFont("Arial", 12)))
-                apriori_layout.addWidget(self.apriori_result_text, stretch=1)  # Allow results to expand
-
+                apriori_layout.addWidget(QLabel("Tập phổ biến tối đại:", font=QFont("Arial", 12)))
+                apriori_layout.addWidget(self.maximal_itemsets_text, stretch=1)  # Added to layout
+                apriori_layout.addWidget(QLabel("Luật kết hợp:", font=QFont("Arial", 12)))
+                apriori_layout.addWidget(self.association_rules_text, stretch=1)
                 tab.setLayout(apriori_layout)
 
 
@@ -529,14 +604,18 @@ class MainWindow(QWidget):
                         background-color: #4CAF50; /* Brighter green when pressed */
                     }
                 """)
+                self.id3_load_button.clicked.connect(self.load_data_decision_tree)
+
+                self.dt_filepath_display = QLineEdit() 
+                self.dt_filepath_display.setReadOnly(True)
+
                 self.id3_result_text = QTextEdit()
                 self.id3_result_text.setReadOnly(True)
                 self.id3_result_text.setStyleSheet("""
                     QTextEdit {
-                        font-size: 25pt; /* Increased text edit font size */
+                        font-size: 18pt; /* Increased text edit font size */
                     }
                 """)
-
 
                 # Criterion combobox *CREATED FIRST*
                 self.criterion_combobox = QComboBox()
@@ -549,33 +628,48 @@ class MainWindow(QWidget):
                     }
                     QComboBox QAbstractItemView { /* ... */ }  # Dropdown styles
                 """)
+                self.dt_calculate_button = QPushButton("Tính toán")  # The calculate button
+                self.dt_calculate_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: #2E7D32; /* Green background */
+                        color: white;            /* White text */
+                        font-weight: bold;       /* Bold text */
+                        border: none;            /* No border */
+                        padding: 8px 16px;      /* Padding around text */
+                        border-radius: 4px;
+                        font-size : 20px;      /* Rounded corners */
+                    }
+                    QPushButton:hover {
+                        background-color: #1B5E20; /* Darker green on hover */
+                    }
+                    QPushButton:pressed {
+                        background-color: #4CAF50; /* Brighter green when pressed */
+                    }
+                """)
+                self.dt_calculate_button.clicked.connect(self.calculate_decision_tree)
 
+                dt_layout = QVBoxLayout()
+                dt_layout.addWidget(QLabel("Tải tập dữ liệu:", font=QFont("Arial", 12)))
+                dt_layout.addWidget(self.id3_load_button)
+                dt_layout.addWidget(self.dt_filepath_display) # Filepath display
+                dt_layout.addWidget(QLabel("Chọn cách tính:", font=QFont("Arial", 12)))
+                dt_layout.addWidget(self.criterion_combobox)
 
+                dt_layout.addWidget(self.dt_calculate_button) # Add calculate button here
 
-
-                # Now create the layout and add widgets
-                id3_layout = QVBoxLayout()
-                id3_layout.addWidget(QLabel("Chọn cách tính:", font=QFont("Arial", 14)))  # Set font size here
-                id3_layout.addWidget(self.criterion_combobox, stretch=1)
-                id3_layout.addWidget(self.id3_load_button)
-                id3_layout.addWidget(QLabel("Các luật của cây quyết định:", font=QFont("Arial", 14)))
+                dt_layout.addWidget(QLabel("Các luật của cây quyết định:", font=QFont("Arial", 12)))
                 result_container = QWidget()
                 result_layout = QVBoxLayout(result_container)
                 result_layout.addWidget(self.id3_result_text)
-
-
                 result_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins
                 result_layout.setSpacing(0)  # Remove spacing within container
                 result_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
                 self.id3_result_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
                 self.id3_result_text.setMinimumSize(0,0)  # Ensure no minimum size restriction on text edit
 
+                dt_layout.addWidget(result_container, stretch=1) # stretch on the container
+                tab.setLayout(dt_layout)
 
-                id3_layout.addWidget(result_container, stretch=1) # stretch on the container
-                tab.setLayout(id3_layout)
-
-                self.id3_load_button.clicked.connect(self.calculate_gini_and_select_feature)
             
             elif i == 3:  # Naive Bayes (with Laplace) Tab
                 self.nb_load_button = QPushButton("Upload file .CSV")
@@ -600,7 +694,7 @@ class MainWindow(QWidget):
                 self.nb_laplace_result_text.setReadOnly(True)
                 self.nb_laplace_result_text.setStyleSheet("""
                     QTextEdit {
-                        font-size: 25pt;
+                        font-size: 16pt;
                     }
                 """)
 
@@ -669,6 +763,10 @@ class MainWindow(QWidget):
                         background-color: #4CAF50; /* Brighter green when pressed */
                     }
                 """)
+                self.raw_filepath_display = QLineEdit()  # LineEdit to display filepath
+                self.raw_filepath_display.setReadOnly(True)
+
+                
 
                 self.raw_result_text = QTextEdit()
                 self.raw_result_text.setReadOnly(True)
@@ -700,7 +798,7 @@ class MainWindow(QWidget):
                 """)
 
                 raw_layout = QVBoxLayout()
-
+                
                 self.decision_attr_display = QLineEdit()  # Create a QLineEdit
                 self.decision_attr_display.setReadOnly(True)  # Make it read-only
 
@@ -708,16 +806,24 @@ class MainWindow(QWidget):
                 # Add widgets to the layout
                 raw_layout.addWidget(QLabel("Tải tập dữ liệu:", font=QFont("Arial", 12)))
                 raw_layout.addWidget(self.raw_load_button)
+                raw_layout.addWidget(self.raw_filepath_display)  
 
-                # X selection
-                raw_layout.addWidget(QLabel("Chọn tập X:", font=QFont("Arial", 12)))
-                raw_layout.addWidget(self.X_list)
+                selection_layout = QHBoxLayout()
+
+                # Left side (X selection)
+                left_layout = QVBoxLayout()
+                left_layout.addWidget(QLabel("Chọn tập X:", font=QFont("Arial", 12)))
+                left_layout.addWidget(self.X_list, stretch=1)  # Stretch X_list vertically
+                selection_layout.addLayout(left_layout)
 
 
-                # B selection
-                raw_layout.addWidget(QLabel("Chọn tập B:", font=QFont("Arial", 12)))
-                raw_layout.addWidget(self.B_list)
+                # Right side (B selection)
+                right_layout = QVBoxLayout()
+                right_layout.addWidget(QLabel("Chọn tập B:", font=QFont("Arial", 12)))
+                right_layout.addWidget(self.B_list, stretch=1)  # Stretch B_list vertically
+                selection_layout.addLayout(right_layout)
 
+                raw_layout.addLayout(selection_layout)
 
 
                 # C selection
@@ -832,71 +938,84 @@ class MainWindow(QWidget):
         filepath, _ = QFileDialog.getOpenFileName(self, "Chọn tập dữ liệu", "", "CSV Files (*.csv);;All Files (*)", options=options)
         if filepath:
             try:
-                self.apriori_data = pd.read_csv(filepath)  # Store Apriori data separately
-                self.apriori_result_text.clear()
-                # ... (process apriori_data if needed, e.g., drop columns, etc.)
+                self.apriori_filepath_display.setText(filepath)
+                self.apriori_data = []  # Initialize an empty list for transactions
+                df = pd.read_csv(filepath)
+
+                # Correctly create transactions by grouping items
+                for transaction_id in df['Mã hóa đơn'].unique(): # Get each transaction and loop through each transaction's items
+                    transaction = df[df['Mã hóa đơn'] == transaction_id]['Mã hàng'].tolist()
+                    self.apriori_data.append(transaction)
+
             except Exception as e:
-                self.apriori_result_text.append(f"Lỗi: {e}")
+                self.apriori_result_text.append(f"Lỗi khi tải dữ liệu: {e}")
 
     def run_apriori(self):
         try:
-            self.apriori_result_text.clear()
-            min_support = self.min_support_input.value()
-            min_confidence = self.min_confidence_input.value()
+            # Clear all result areas
+            self.frequent_itemsets_text.clear()
+            self.maximal_itemsets_text.clear()
+            self.association_rules_text.clear()
 
-            # Data preprocessing: Convert to list of sets
-            transactions = []
-            for _, row in self.apriori_data.iterrows():
-                transaction = set(row.dropna().astype(str))
-                transactions.append(transaction)
 
-            apriori = Apriori(min_support, transactions)
+            try:
+                min_sup = float(self.min_support_input.value())
+                min_conf = float(self.min_confidence_input.value())
+            except ValueError:
+                self.apriori_result_text.append("Lỗi: Min Support và Min Confidence phải là số.")
+                return
+
+            if not hasattr(self, 'apriori_data'):
+                self.apriori_result_text.append("Lỗi: Vui lòng tải dữ liệu trước.")
+                return
+
+
+
+            apriori = Apriori(min_sup * len(self.apriori_data), self.apriori_data) # Multiply min_sup by num of transactions
             apriori.generate_frequent_itemsets()
 
-            # Display frequent itemsets (Corrected and simplified)
-            frequent_itemsets_to_display = []
-            for itemset, _ in apriori.frequent_itemsets:  # Ignore support counts here, using '_'
-                frequent_itemsets_to_display.append(itemset)
-
-            self.apriori_result_text.append("Các tập phổ biến:")
-            for itemset in frequent_itemsets_to_display:  #Iterate over each set in the filtered list.
-                self.apriori_result_text.append(str(itemset)) 
+            # Frequent Itemsets output
+            frequent_itemsets_output = "{"
+            for k_itemsets in apriori.frequent_itemsets:
+                 for itemset, support in k_itemsets.items():
+                    frequent_itemsets_output += str(set(itemset)) + ", "
 
 
-            # Calculate and display maximal frequent itemsets (corrected)
-
-            if apriori.frequent_itemsets: # Only proceed if frequent itemsets exist
-                self.apriori_result_text.append("\nCác tập phổ biến tối đại:")
-                maximal_frequent_itemsets = []
-                for itemset1, _ in apriori.frequent_itemsets:
-                    is_maximal = True
-                    for itemset2, _ in apriori.frequent_itemsets:
-                        if itemset1 != itemset2 and itemset1.issubset(itemset2):
-                            is_maximal = False
-                            break
-                    if is_maximal:
-                        maximal_frequent_itemsets.append(itemset1)
-
-                for itemset in maximal_frequent_itemsets:
-                    self.apriori_result_text.append(f"{itemset}")
+            frequent_itemsets_output = frequent_itemsets_output[:-2] + "}" # Remove trailing comma and space
+            self.frequent_itemsets_text.append(frequent_itemsets_output)
 
 
-                # Generate and display association rules (only if frequent itemsets exist)
-                association_rules = apriori.generate_association_rules(min_confidence)
-                self.apriori_result_text.append("\nLuật kết hợp:")
+            # Maximal frequent itemsets
+            maximal_itemsets = []
+            for k_itemsets in reversed(apriori.frequent_itemsets): # Correct iteration through frequent itemsets starting with the largest k
+                for itemset in k_itemsets:
+                     is_maximal = True
+                     for other_k_itemsets in reversed(apriori.frequent_itemsets): # Iterating through all other itemsets including the itemsets with same k
+                         for other_itemset in other_k_itemsets:
+                                if k_itemsets != other_k_itemsets and set(itemset).issubset(set(other_itemset)): # If current itemset is a subset of different itemsets at different k level, it is not maximal
+                                     is_maximal = False # Set is_maximal to False because itemset is not maximal.
+                                     break  # No need to check others
+                         if not is_maximal: # if itemset is found not maximal, break out of the loop
+                                 break
+                     if is_maximal:  # Add if maximal
+                           maximal_itemsets.append(itemset)
+            
+            for itemset in maximal_itemsets:
+                 self.maximal_itemsets_text.append(f"{set(itemset)}")  # Correctly append to maximal_itemsets_text
 
-                if association_rules: # Display if at least one rule is found.
-                    for rule in association_rules:
-                        self.apriori_result_text.append(f"{set(rule[0])} => {set(rule[1])} (Độ tin cậy = {rule[2]:.2f})")
+            rules = apriori.generate_association_rules(min_conf)   
 
-                else:
-                    self.apriori_result_text.append("Không tìm thấy luật kết hợp")
+            if rules:  # Corrected display of association rules
+                 for rule in rules:
+                     antecedent, consequent, confidence = rule
+                     self.association_rules_text.append(f"{antecedent} --> {consequent} (Confidence: {confidence:.2f})")  # Correctly append to association_rules_text
 
-
+            else:
+                 self.association_rules_text.append("Không tìm thấy luật kết hợp nào.") # Message when no rules found
 
         except Exception as e:
             self.apriori_result_text.append(f"Lỗi: {e}")
-    
+ 
     def load_data_raw(self):
         options = QFileDialog.Options()
         filepath, _ = QFileDialog.getOpenFileName(self, "Chọn tập dữ liệu", "", "CSV Files (*.csv);;All Files (*)", options=options)
@@ -904,7 +1023,7 @@ class MainWindow(QWidget):
         if filepath:
             try:
                  self.raw_result_text.clear()  # Clear any existing result text
-
+                 self.raw_filepath_display.setText(filepath) 
                  self.raw_data = pd.read_csv(filepath) # Load raw data
                  if 'Day' in self.raw_data.columns:
                      self.raw_data = self.raw_data.drop(columns=['Day'])
@@ -1135,42 +1254,49 @@ class MainWindow(QWidget):
     def display_content(self, index):
         self.stacked_widget.setCurrentIndex(index)
 
-    def calculate_gini_and_select_feature(self):
+    def load_data_decision_tree(self):
         options = QFileDialog.Options()
-        file_path, _ = QFileDialog.getOpenFileName(self, "Chọn tập dữ liệu", "", "CSV Files (*.csv);;All Files (*)", options=options)
-
-        if file_path:
+        filepath, _ = QFileDialog.getOpenFileName(self, "Chọn tập dữ liệu", "", "CSV Files (*.csv);;All Files (*)", options=options)
+        if filepath:
             try:
-                df = pd.read_csv(file_path)
-                if 'Day' in df.columns:  # Remove 'Day' column if it exists
-                    df = df.drop(columns=['Day'])
-
-                label = "Play"
-                class_list = df[label].unique()
-
-                self.id3_result_text.clear()
-
-                dot = Digraph()
-                dot.node('root', 'root')
-
-
-                criterion = self.criterion_combobox.currentData() #Corrected line
-
-                decision_tree_gen = DecisionTreeGenerator(label, criterion)
-                decision_tree_gen.result_text = self.id3_result_text
-                decision_tree_gen.make_tree(dot, 'root', 'root', df, class_list)
-
-                dot.render('decision_tree', view=True) # or  'decision_tree_info_gain'
-
-
-                self.id3_result_text.append("Các luật được tạo:\n")
-                dot_rules = Digraph()
-                decision_tree_gen.generate_rules(dot_rules, 'root', 'root', df, class_list)
-
-
-
+                self.dt_filepath_display.setText(filepath)  # Update filepath display
+                self.dt_data = pd.read_csv(filepath) #Load and store data
+                if 'Day' in self.dt_data.columns:
+                    self.dt_data = self.dt_data.drop(columns=['Day'])
             except Exception as e:
                 self.id3_result_text.append(f"Lỗi: {e}")
+    
+    def calculate_decision_tree(self):
+        try:
+            self.id3_result_text.clear()  # Clear previous results
+
+            criterion = self.criterion_combobox.currentData()
+            label = "Play"  # Or determine dynamically if needed
+
+            if not hasattr(self, 'dt_data'): # Check if data is loaded
+                 self.id3_result_text.append("Vui lòng tải dữ liệu trước.")
+                 return
+
+            if 'Day' in self.dt_data.columns:  # Check and drop Day if exist
+                self.dt_data = self.dt_data.drop(columns=['Day'])
+
+            class_list = self.dt_data[label].unique()
+            dot = Digraph()
+            dot.node('root', 'root')
+
+            decision_tree_gen = DecisionTreeGenerator(label, criterion)
+            decision_tree_gen.result_text = self.id3_result_text
+
+            decision_tree_gen.make_tree(dot, 'root', 'root', self.dt_data, class_list) # Correctly use self.dt_data
+
+            dot.render('decision_tree', view=True)
+
+            self.id3_result_text.append("Các luật được tạo:\n")
+            dot_rules = Digraph()
+            decision_tree_gen.generate_rules(dot_rules, 'root', 'root', self.dt_data, class_list)
+
+        except Exception as e:
+            self.id3_result_text.append(f"Lỗi: {e}")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
