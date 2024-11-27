@@ -1077,57 +1077,55 @@ class MainWindow(QWidget):
             kmeans = KMeans(k)
             kmeans.result_text = self.kmeans_result_text
 
-            U, centroids = kmeans.fit(self.kmeans_data)
+            U, centroids = kmeans.fit(self.kmeans_data)  # Call fit() only ONCE
 
+            data_point_labels = [f"X{i + 1}".rjust(3) for i in range(len(self.kmeans_data))]
+            cluster_labels = [f"C{i + 1}".rjust(3) for i in range(k)]
 
-            data_point_labels = [f"X{i + 1}" for i in range(len(self.kmeans_data))]
-            cluster_labels = [f"C{i + 1}" for i in range(k)]
-
-
-
-            # 1. Display formatted partition matrix U
-            
+            # 1. Display partition matrix
             self.kmeans_result_text.append("Ma trận phân hoạch:")
-            header = "M\t" + "\t".join(data_point_labels)
+            header = "  M\t" + "  \t".join(data_point_labels)
             matrix_string = ""
             for j in range(len(cluster_labels)):
                 row = f"{cluster_labels[j]}\t"
                 for i in range(len(data_point_labels)):
-                    row += f"{int(U[i][j])}\t"
+                    row += str(int(U[i][j])).rjust(3) + "\t"  # Pad matrix elements
                 matrix_string += row + "\n"
-
             self.kmeans_result_text.append(f"{header}\n{matrix_string}")
-
 
             # 2. Display centroids
             self.kmeans_result_text.append("Trọng tâm các cụm:")
             for i, centroid in enumerate(centroids):
-                self.kmeans_result_text.append(f"C{i+1}: {centroid.tolist()}")
+                formatted_centroid = [f"{val:.2f}" for val in centroid]  # Format each value
+                self.kmeans_result_text.append(f"C{i+1}: [{', '.join(formatted_centroid)}]") 
 
+            # 3. Calculate Euclidean distances and cluster assignments
             self.kmeans_result_text.append("\nKhoảng cách Euclidean :")
-
-            header = "\t" + "  " +"           ".join(cluster_labels) + "\t\tCụm"  # Add "Gom vào cụm" header
+            header = " "+ "\t  " + "\t\t ".join(cluster_labels) + f" \t\t{'Cụm'.rjust(6)}"
             self.kmeans_result_text.append(header)
 
-
-            cluster_assignments = np.argmin(np.array(kmeans.fit(self.kmeans_data)[0]), axis=1)  # Getting cluster assignments from partition matrix
 
             for i, point in enumerate(self.kmeans_data):
                 distances = [np.linalg.norm(point - centroid) for centroid in centroids]
                 formatted_distances = [f"{dist:.2f}".rjust(6) for dist in distances]
-                assigned_cluster = f"C{cluster_assignments[i] + 1}"  # Get assigned cluster label
 
-                self.kmeans_result_text.append(f"X{i+1}\t" + "\t".join(formatted_distances) + f"\t{assigned_cluster}") # append cluster label
+                min_distance_index = np.argmin(distances)  # Find closest cluster index
+                assigned_cluster = f"C{min_distance_index + 1}"
+
+                self.kmeans_result_text.append(f"X{i+1}\t" + "\t".join(formatted_distances) + f"\t{assigned_cluster.rjust(6)}")
+
+
 
 
             # 4. Display cluster assignments
             self.kmeans_result_text.append("\nKết quả phân cụm:")
-            cluster_assignments = np.argmax(U, axis=1)
-            for i in range(k):
-                cluster_indices = np.where(cluster_assignments == i)[0]
-                cluster_points_labels = [data_point_labels[idx] for idx in cluster_indices]
-                self.kmeans_result_text.append(f"Cụm {i + 1}: {cluster_points_labels}")
+            clusters = [[] for _ in range(k)]  # Initialize clusters for final assignments
+            for i, point in enumerate(self.kmeans_data):  # Cluster based on min distance
+                min_distance_index = np.argmin([np.linalg.norm(point - centroid) for centroid in centroids])  # Assign based on min distance
+                clusters[min_distance_index].append(data_point_labels[i])
 
+            for i, cluster in enumerate(clusters):  # Display based on final assignments
+                self.kmeans_result_text.append(f"Cụm {i + 1}: {cluster}")
 
 
         except Exception as e:
