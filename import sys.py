@@ -356,56 +356,101 @@ class RoughSetAnalyzer:
         return list(set(lower_approximation)), list(set(upper_approximation))
 
     def dependency(self, C, B):
-        unique_C = self.data[C].unique()
-        unique_combinations_B = self.data[B].drop_duplicates()
-        dependency_exists = True
+        try:
+            first_column_name = self.data.columns[0]
+            U = set(self.data[first_column_name])
+        except IndexError:
+            return "Lỗi: Tập dữ liệu trống hoặc không hợp lệ."
 
-        for c_val in unique_C:
-            indices_c = self.data[self.data[C] == c_val].index
+        # Calculate lower approximations for each value of C (Corrected)
+        lower_approximations = []
+        for c_val in self.data[C].unique(): 
+           lower_approx_c = [] 
+           for x in U:
+               c_x = set(self.data[self.data[B].eq(self.data.set_index(first_column_name).loc[x, B]).all(axis=1)][first_column_name])
 
-            for index, row in unique_combinations_B.iterrows():
-                b_combination = row
-                indices_b = self.data[self.data[B].eq(b_combination).all(axis=1)].index
-                intersection = indices_c.intersection(indices_b)
+               if c_x.issubset(self.data[self.data[C] == c_val][first_column_name].tolist()): 
+                   lower_approx_c.extend(list(c_x))
 
-                if not intersection.empty and len(self.data.loc[intersection, C].unique()) > 1:
-                    dependency_exists = False
-                    break 
-            if not dependency_exists:
-                break
 
-        return dependency_exists
+
+           lower_approximations.append(set(lower_approx_c)) 
+
+
+        k = sum(len(approx) for approx in lower_approximations) / len(U) if len(U) > 0 else 0
+
+        # Construct the dependency message
+        dependency_text = f"Phụ thuộc của {C} vào B: "
+
+        if k == 1:
+            dependency_text += "Phụ thuộc hoàn toàn (k = 1)"
+        elif 0 < k < 1:
+            dependency_text += f"Phụ thuộc một phần (k = {k:.2f})"
+        else:
+            dependency_text += "Không phụ thuộc (k = 0)"
+
+        return dependency_text
+
+
+    def discernibility_matrix(self, decision_attr):  # Create method for computing discernibility matrix
+        features = self.data.columns.drop(['O', decision_attr])
+        matrix = []
+        for i in range(len(self.data)):
+            row = []
+            for j in range(len(self.data)):
+                if self.data.loc[i, decision_attr] != self.data.loc[j, decision_attr]: # different label so include different features
+                    diff_features = set()
+                    for feature in features:
+                         if self.data.loc[i, feature] != self.data.loc[j, feature]:
+                             diff_features.add(feature)  # Keep track of different features
+                    if diff_features:  # If there is a feature that's different
+                          row.append(diff_features)
+                else: # Same label so no need to consider
+                    row.append(None)
+
+            matrix.append(row)
+        return matrix
+
 
     def reducts(self, decision_attr):
-        if self.data.empty:
-            return []
+        matrix = self.discernibility_matrix(decision_attr) # Compute matrix
+        #Calculate discernibility function
+        discernibility_function = set()  # Use a set to ensure unique clauses
 
-        features = self.data.columns.drop(['O', decision_attr]).tolist()
-        n = len(features)
-        reducts_found = []
 
-    # Precompute the dependency for all combinations of features
-        for i in range(1, 1 << n):  # Iterate over all non-empty subsets
-            current_features = [features[j] for j in range(n) if (i >> j) & 1]
 
-        # Check dependency only if current_features is not empty
-        if current_features and self.dependency(decision_attr, current_features):
-            # Check if the current reduct is minimal
-            is_minimal = all(not set(existing_reduct).issubset(set(current_features)) for existing_reduct in reducts_found)
+        for row in matrix:  # Loop through the rows of the discernibility matrix
+            for item in row:  # Loop through items in the rows
+                if item:
+                    discernibility_function.add(tuple(sorted(item)))  #Sort for easier comparision
 
-            if is_minimal:
-                # Remove any existing reducts that are supersets of the current reduct
-                reducts_found = [
-                    reduct for reduct in reducts_found if not set(current_features).issubset(set(reduct))
-                ]
-                reducts_found.append(current_features)
+        if not discernibility_function: # Handle cases with no reducts
+           return []
 
-        readable_reducts = [", ".join(reduct) for reduct in reducts_found]
-        print("Reducts found:")
-        for idx, reduct in enumerate(readable_reducts, 1):
-           print(f"Reduct {idx}: {reduct}")
+        # Simplify discernibility function (using absorption law)
+        simplified_function = list(discernibility_function)  # Make a copy
 
-        return reducts_found
+
+        simplified = True  # Start with True to enter the loop
+
+        while simplified:
+             simplified = False # Set it to False for each iteration of while loop
+             new_simplified = []
+             for clause1 in simplified_function:
+                 absorbed = False
+                 for clause2 in simplified_function:
+                     if clause1 != clause2 and set(clause1).issubset(clause2):  # Apply absorption if subset
+                           absorbed = True #clause1 is absorbed so no need to add it to the output
+                           break  # Clause1 absorbed by clause 2, exit the inner loop
+                 if not absorbed:
+                    new_simplified.append(clause1) # if clause1 is not absorbed, it is part of the reduct
+                    if set(simplified_function) != set(new_simplified):  # If changes made, update function and continue
+                           simplified_function = new_simplified # Update the simplified_function
+                           simplified = True  # Changes made, so continue the loop
+
+
+
+        return [list(clause) for clause in simplified_function]
 
 
 class MainWindow(QWidget):
@@ -1053,16 +1098,16 @@ class MainWindow(QWidget):
             selected_X = [item.text() for item in self.X_list.selectedItems()]
             selected_B = [item.text() for item in self.B_list.selectedItems()]
 
-            if not selected_X or not selected_B:
+            if not selected_X or not selected_B :  # Check if X and B are selected
                 self.raw_result_text.append("Vui lòng chọn X và B.")
                 return
 
-            # Determine decision attribute (last column)
             if len(self.raw_data.columns) > 0:
                 decision_attribute = self.raw_data.columns[-1]
             else:
                 self.raw_result_text.append("Tập dữ liệu trống hoặc không hợp lệ.")
                 return
+
 
             analyzer = RoughSetAnalyzer(self.raw_data)
 
@@ -1070,16 +1115,25 @@ class MainWindow(QWidget):
             self.raw_result_text.append(f"Xấp xỉ dưới của X qua tập thuộc tính B là: {lower}")
             self.raw_result_text.append(f"Xấp xỉ trên của X qua tập thuộc tính B là: {upper}")
             if len(upper) > 0:
-               approximation_coefficient = len(lower) / len(upper)
-               self.raw_result_text.append(f"Hệ số xấp xỉ: {approximation_coefficient:.2f}")
+                  coeff = len(lower) / len(upper)
+                  self.raw_result_text.append(f"Hệ số xấp xỉ: {coeff:.2f}")
 
-            dependency_result = analyzer.dependency(decision_attribute, selected_B)
-            self.raw_result_text.append(f"\nPhụ thuộc của {decision_attribute} vào B: {dependency_result}")
+            dependency_result_msg = analyzer.dependency(decision_attribute, selected_B)  # Get dependency result string
+            self.raw_result_text.append(f"\n{dependency_result_msg}")  # Display message
 
             reducts_result = analyzer.reducts(decision_attribute)
-            self.raw_result_text.append("\nReducts:")
-            for reduct in reducts_result:
-                self.raw_result_text.append(str(reduct))
+            if reducts_result:  # Display Reducts if they exist
+                self.raw_result_text.append("\nReducts:")
+
+                reduct_strings = []
+                for reduct in reducts_result:
+                    reduct_strings.append("(" + " ∧ ".join(reduct) + ")")
+
+                self.raw_result_text.append(" ∨ ".join(reduct_strings))  # Use OR operator
+
+            else:
+                 self.raw_result_text.append("\nKhông tìm thấy reduct nào.")
+
 
         except Exception as e:
             self.raw_result_text.append(f"Lỗi: {e}")
