@@ -89,28 +89,23 @@ class KMeans:
 
     def fit(self, data):
         n_samples, n_features = data.shape
-        
+
         # Initialize centroids randomly from data points
         self.centroids = data[np.random.choice(n_samples, self.k, replace=False)]
-
 
         # Initialize partition matrix U0
         U = np.zeros((n_samples, self.k))
         for i, point in enumerate(data):
-             distances = [np.linalg.norm(point - centroid) for centroid in self.centroids]
-             cluster_index = np.argmin(distances)
-             U[i, cluster_index] = 1
+            distances = [np.linalg.norm(point - centroid) for centroid in self.centroids]
+            cluster_index = np.argmin(distances)
+            U[i, cluster_index] = 1
 
-        for _ in range(self.max_iterations):
-            prev_U = U.copy() # Previous U for checking stop condition
+        for iteration in range(self.max_iterations):
+            prev_U = U.copy()
 
-
-
-            # Calculate cluster centers (centroids)
             centroids = []
-
-            for j in range(self.k):  # Calculate centroids for each cluster
-                cluster_points_indices = np.where(U[:, j] == 1)[0] # Check which points belong to current cluster
+            for j in range(self.k):
+                cluster_points_indices = np.where(U[:, j] == 1)[0]
                 if cluster_points_indices.size > 0:
                     cluster_points = data[cluster_points_indices]
                     centroid = np.mean(cluster_points, axis=0)
@@ -118,23 +113,20 @@ class KMeans:
                 else:
                     centroids.append(self.centroids[j])
 
-
-
             self.centroids = np.array(centroids)
 
-            # Update partition matrix
+
             U = np.zeros((n_samples, self.k))
             for i, point in enumerate(data):
-                 distances = [np.linalg.norm(point - centroid) for centroid in self.centroids]
-                 cluster_index = np.argmin(distances)
-                 U[i, cluster_index] = 1
+                distances = [np.linalg.norm(point - centroid) for centroid in self.centroids]
+                cluster_index = np.argmin(distances)
+                U[i, cluster_index] = 1
 
+            if np.array_equal(U, prev_U):
+                break
 
-            if np.array_equal(U, prev_U):  # Stop if partition matrix doesn't change
-                 break
+        return U, self.centroids
 
-
-        return U, self.centroids 
 
 class DecisionTreeGenerator:
     def __init__(self, label, criterion):  # Add criterion parameter
@@ -763,9 +755,15 @@ class MainWindow(QWidget):
                         background-color: #4CAF50; /* Brighter green when pressed */
                     }
                 """)
+                self.kmeans_filepath_display = QLineEdit()  # Create a QLineEdit to display the filepath
+                self.kmeans_filepath_display.setReadOnly(True)  # Make it read-only
 
 
-                self.k_input = QLineEdit("2")  # Input for k with default 2
+
+                self.k_input = QSpinBox() # Use a spinbox
+                self.k_input.setMinimum(1)  # Set minimum value (k must be at least 1)
+                self.k_input.setValue(2) # default value
+                self.k_input.setStyleSheet("font-size: 12pt;") # Increase font size
                 self.kmeans_calculate_button = QPushButton("Tính toán")
                 self.kmeans_calculate_button.setStyleSheet("""
                     QPushButton {
@@ -790,13 +788,14 @@ class MainWindow(QWidget):
                 self.kmeans_result_text.setReadOnly(True)
                 self.kmeans_result_text.setStyleSheet("""
                     QTextEdit {
-                        font-size: 25pt;
+                        font-size: 18pt;
                     }
                 """)
 
                 kmeans_layout = QVBoxLayout()
                 kmeans_layout.addWidget(QLabel("Tải tập dữ liệu:", font=QFont("Arial", 12)))
                 kmeans_layout.addWidget(self.kmeans_load_button)
+                kmeans_layout.addWidget(self.kmeans_filepath_display)
                 kmeans_layout.addWidget(QLabel("Nhập k:", font=QFont("Arial", 12)))
                 kmeans_layout.addWidget(self.k_input)
                 kmeans_layout.addWidget(self.kmeans_calculate_button)
@@ -1061,6 +1060,7 @@ class MainWindow(QWidget):
 
                self.kmeans_data = self.kmeans_data.apply(pd.to_numeric, errors='coerce').dropna()
                self.kmeans_data = self.kmeans_data.values # Convert to numpy array for more efficient calculation
+               self.kmeans_filepath_display.setText(filepath)
 
 
 
@@ -1069,50 +1069,69 @@ class MainWindow(QWidget):
                self.kmeans_result_text.append(f"Lỗi khi tải dữ liệu: {e}")
 
 
-    def run_kmeans(self): # Run k-means clustering
+    def run_kmeans(self):
         try:
             self.kmeans_result_text.clear()
             k = int(self.k_input.text())
 
-
             kmeans = KMeans(k)
+            kmeans.result_text = self.kmeans_result_text
+
             U, centroids = kmeans.fit(self.kmeans_data)
 
 
             data_point_labels = [f"X{i + 1}" for i in range(len(self.kmeans_data))]
+            cluster_labels = [f"C{i + 1}" for i in range(k)]
 
-            cluster_labels = [f"C{i + 1}" for i in range(k)]  # Cluster labels C1, C2,...
 
 
-            header = "M\t" + "\t".join(data_point_labels) # Construct the header of the partition matrix output
-            matrix_string = "" # Store the partition matrix as a string
-
+            # 1. Display formatted partition matrix U
+            
+            self.kmeans_result_text.append("Ma trận phân hoạch:")
+            header = "M\t" + "\t".join(data_point_labels)
+            matrix_string = ""
             for j in range(len(cluster_labels)):
-              row = f"{cluster_labels[j]}\t"
-              for i in range(len(data_point_labels)): # Iterating through elements in the matrix
-                   row += f"{int(U[i][j])}\t"  # Display 0 or 1 and tab for allignment
-              matrix_string += row + "\n"
+                row = f"{cluster_labels[j]}\t"
+                for i in range(len(data_point_labels)):
+                    row += f"{int(U[i][j])}\t"
+                matrix_string += row + "\n"
 
-            self.kmeans_result_text.append(f"{header}\n{matrix_string}") # add to output
+            self.kmeans_result_text.append(f"{header}\n{matrix_string}")
 
 
-            self.kmeans_result_text.append("\nTrọng tâm các cụm:") # Print centroids
+            # 2. Display centroids
+            self.kmeans_result_text.append("Trọng tâm các cụm:")
             for i, centroid in enumerate(centroids):
                 self.kmeans_result_text.append(f"C{i+1}: {centroid.tolist()}")
 
+            self.kmeans_result_text.append("\nKhoảng cách Euclidean :")
 
+            header = "\t" + "  " +"           ".join(cluster_labels) + "\t\tCụm"  # Add "Gom vào cụm" header
+            self.kmeans_result_text.append(header)
+
+
+            cluster_assignments = np.argmin(np.array(kmeans.fit(self.kmeans_data)[0]), axis=1)  # Getting cluster assignments from partition matrix
+
+            for i, point in enumerate(self.kmeans_data):
+                distances = [np.linalg.norm(point - centroid) for centroid in centroids]
+                formatted_distances = [f"{dist:.2f}".rjust(6) for dist in distances]
+                assigned_cluster = f"C{cluster_assignments[i] + 1}"  # Get assigned cluster label
+
+                self.kmeans_result_text.append(f"X{i+1}\t" + "\t".join(formatted_distances) + f"\t{assigned_cluster}") # append cluster label
+
+
+            # 4. Display cluster assignments
             self.kmeans_result_text.append("\nKết quả phân cụm:")
             cluster_assignments = np.argmax(U, axis=1)
-
             for i in range(k):
                 cluster_indices = np.where(cluster_assignments == i)[0]
                 cluster_points_labels = [data_point_labels[idx] for idx in cluster_indices]
-                self.kmeans_result_text.append(f"\nCụm {i + 1}: {cluster_points_labels}")
+                self.kmeans_result_text.append(f"Cụm {i + 1}: {cluster_points_labels}")
+
 
 
         except Exception as e:
             self.kmeans_result_text.append(f"Lỗi: {e}")
-    
     
 
     def display_content(self, index):
