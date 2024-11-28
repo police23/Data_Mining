@@ -3,7 +3,7 @@ import math
 import sys
 from tkinter.font import Font
 import pandas as pd
-from PyQt5.QtWidgets import (QApplication, QFormLayout, QHBoxLayout, QLineEdit, QWidget, QTabWidget, QVBoxLayout, 
+from PyQt5.QtWidgets import (QApplication, QCheckBox, QFormLayout, QHBoxLayout, QLineEdit, QWidget, QTabWidget, QVBoxLayout, 
                              QLabel, QStackedWidget, QPushButton, QTextEdit, QFileDialog, QComboBox, QSizePolicy,
                              QSpinBox, QDoubleSpinBox, QMessageBox, QListWidget, QAbstractItemView)
 from PyQt5.QtGui import QIcon
@@ -290,50 +290,103 @@ class DecisionTreeGenerator:
                         dot.edge(parent_name, node_name, label=feature_value)
                         self.make_tree(dot, node_name, node_name, feature_value_data.drop(columns=best_feature), class_list, current_branch_condition)
 
-class NaiveBayesLaplace:  # New class for Laplace smoothing
+class NaiveBayes: 
     def __init__(self, label):
         self.label = label
-        self.probabilities = {}  # Store conditional probabilities
-        self.class_priors = {}    # Store class priors
+        self.probabilities = {}  # Store conditional probabilities P(X|Y)
+        self.class_priors = {}    # Store class priors P(Y)
+
+
 
     def train(self, data):
+        class_counts = data[self.label].value_counts()  # Số lượng nhãn
+        total_instances = len(data)  # Tổng số mẫu
 
-        class_counts = data[self.label].value_counts()
-        total_instances = len(data)
 
-
-        for class_value in class_counts.index:
+        # Calculate class priors
+        for class_value in class_counts.index:  # Corrected: Iterate through class values
             self.class_priors[class_value] = class_counts[class_value] / total_instances
-            class_data = data[data[self.label] == class_value]
-            self.probabilities[class_value] = {}
 
-            for feature in data.columns.drop(self.label): # Drop label from columns when calculate
-                self.probabilities[class_value][feature] = {}
-                feature_counts = class_data[feature].value_counts()
-                num_feature_values = len(data[feature].unique())
 
-                for feature_value in data[feature].unique():  # Iterate over ALL unique feature values
-                    count = feature_counts[feature_value] if feature_value in feature_counts else 0  # Check if val exists
-                    self.probabilities[class_value][feature][feature_value] = (count + 1) / (class_counts[class_value] + num_feature_values)  # Laplace smoothing
+
+
+        # Calculate feature probabilities (P(X|Y))
+        self.feature_probs = {}  # Use feature_probs to store probabilities
+        for feature in data.columns.drop(self.label):
+            self.feature_probs[feature] = {}  # Initialize dictionaries
+            for class_value in class_counts.index:
+                 self.feature_probs[feature][class_value] = {} # Initialize nested dict
+                 class_data = data[data[self.label] == class_value]
+                 feature_counts = class_data[feature].value_counts()
+                 for feature_value in feature_counts.index:
+
+                      self.feature_probs[feature][class_value][feature_value] = feature_counts[feature_value] / class_counts[class_value]
+
 
     def predict(self, instance):
-
+        # Same as NaiveBayesLaplace.predict, using self.feature_probs
         predictions = {}
+
+        for class_value in self.class_priors:
+            probability = self.class_priors[class_value]
+
+            for feature, feature_value in instance.items():
+                if feature in self.feature_probs:
+                     probability *= self.feature_probs[feature][class_value].get(feature_value, 0) # Use .get to handle missing values
+
+            predictions[class_value] = probability
+
+
+        return max(predictions, key=predictions.get) if predictions else None
+
+class NaiveBayesLaplace:
+    def __init__(self, label):
+        self.label = label  # Nhãn phân lớp
+        self.class_priors = {}  # Xác suất tiên nghiệm P(Y)
+        self.feature_probs = {}  # Xác suất có điều kiện P(X|Y)
+
+    def train(self, data):
+        class_counts = data[self.label].value_counts()  # Số lượng mỗi nhãn
+        total_instances = len(data)  # Tổng số dòng dữ liệu
+        num_classes = len(class_counts)  # Số lượng nhãn
+
+       
+        for class_value in class_counts.index:
+            self.class_priors[class_value] = (class_counts[class_value] + 1) / (total_instances + num_classes)
+
+        self.feature_probs = {}
+        for feature in data.columns.drop(self.label): 
+            self.feature_probs[feature] = {}
+
+            for class_value in class_counts.index:
+                # Lọc dữ liệu theo class_value
+                class_data = data[data[self.label] == class_value]
+                feature_counts = class_data[feature].value_counts()  
+                unique_values = data[feature].unique() 
+                num_feature_values = len(unique_values)
+
+                self.feature_probs[feature][class_value] = {}
+                for feature_value in unique_values:
+                    # Áp dụng Laplace smoothing
+                    count = feature_counts.get(feature_value, 0)
+                    self.feature_probs[feature][class_value][feature_value] = (count + 1) / (
+                        class_counts[class_value] + num_feature_values
+                    )
+
+    def predict(self, instance):
+        predictions = {}
+
         for class_value in self.class_priors:
             probability = self.class_priors[class_value]
             for feature, feature_value in instance.items():
-                if feature != self.label:
-                    if feature_value in self.probabilities[class_value][feature]:
-                        probability *= self.probabilities[class_value][feature][feature_value]
-                    else:  # Feature value not seen in training, set to a small probability
-                        probability = 0 #  If feature value not seen, class prob is zero (no Laplace)
-                        break   # No need to check other features for this class
+                if feature in self.feature_probs:  # Check if feature is in the dictionary
+                     probability *= self.feature_probs[feature][class_value].get(feature_value, 1 / (sum(self.feature_probs[feature][class_value].values()) + len(self.class_priors))) # Access feature_probs correctly. Smoothing
 
             predictions[class_value] = probability
 
         # Return the class with the highest probability
         return max(predictions, key=predictions.get) if predictions else None
-
+ 
 class RoughSetAnalyzer:
     def __init__(self, data):
         self.data = data
@@ -494,8 +547,7 @@ class MainWindow(QWidget):
         items = [  # Your tab items
             ("Tập phổ biến và luật kết hợp", "book.png"),
             ("Decision Tree", "ID3.png"),
-            ("Naive Bayes không dùng Laplace", "NB.png"),
-            ("Naive Bayes dùng Laplace", "NB.png"),
+            ("Naive Bayes", "NB.png"),
             ("Tập thô", "raw_data.png"),
             ("K-Means", "cluster.png"),
         ]
@@ -716,7 +768,7 @@ class MainWindow(QWidget):
                 tab.setLayout(dt_layout)
 
             
-            elif i == 3:  # Naive Bayes (with Laplace) Tab
+            elif i == 2:  # Naive Bayes
                 self.nb_load_button = QPushButton("Upload file .CSV")
                 self.nb_load_button.setStyleSheet("""
                     QPushButton {
@@ -735,17 +787,18 @@ class MainWindow(QWidget):
                         background-color: #4CAF50; /* Brighter green when pressed */
                     }
                 """)
-                self.nb_laplace_result_text = QTextEdit()
-                self.nb_laplace_result_text.setReadOnly(True)
-                self.nb_laplace_result_text.setStyleSheet("""
+                self.nb_result_text = QTextEdit()
+                self.nb_result_text.setReadOnly(True)
+                self.nb_result_text.setStyleSheet("""
                     QTextEdit {
                         font-size: 16pt;
                     }
                 """)
+                self.laplace_smoothing_checkbox = QCheckBox("Làm trơn Laplace") 
 
                 self.feature_comboboxes = {}
 
-                self.predict_button = QPushButton("Dự đoán")
+                self.predict_button = QPushButton("Tính toán")
                 self.predict_button.clicked.connect(self.predict_laplace)
                 self.predict_button.setStyleSheet("""
                     QPushButton {
@@ -764,32 +817,45 @@ class MainWindow(QWidget):
                         background-color: #4CAF50; /* Brighter green when pressed */
                     }
                 """)
-                nb_laplace_layout = QVBoxLayout()
-                nb_laplace_layout.addWidget(QLabel("Tải tập dữ liệu:", font=QFont("Arial", 12)))
-                nb_laplace_layout.addWidget(self.nb_load_button)
+
+                self.nb_prediction_label = QLabel("Mãu X được phân vào lớp:")
+                self.nb_prediction_label.setFont(QFont("Arial", 12))
+
+               
+
+                nb_layout = QVBoxLayout()
+                nb_layout.addWidget(QLabel("Tải tập dữ liệu:", font=QFont("Arial", 12)))
+                nb_layout.addWidget(self.nb_load_button)
+                nb_layout.addWidget(self.laplace_smoothing_checkbox)
+                
 
                 form_layout = QFormLayout()  # Form layout for dynamic comboboxes
-                nb_laplace_layout.addWidget(QLabel("Chọn giá trị thuộc tính:", font=QFont("Arial", 12)))
-                nb_laplace_layout.addLayout(form_layout)  # Add form layout
+                nb_layout.addWidget(QLabel("Chọn giá trị thuộc tính:", font=QFont("Arial", 12)))                
+                nb_layout.addLayout(form_layout)  # Add form layout
+                nb_layout.addWidget(self.predict_button)
 
-                nb_laplace_layout.addWidget(self.predict_button)
-                nb_laplace_layout.addWidget(QLabel("Kết quả:", font=QFont("Arial", 12)))
 
-                # Container for result text (for scrolling)
+                prediction_layout = QHBoxLayout()
+                prediction_layout.addWidget(self.nb_prediction_label)
+                nb_layout.addLayout(prediction_layout) 
+                nb_layout.addWidget(QLabel("Kết quả:", font=QFont("Arial", 12)))
+                
+
                 result_container = QWidget()
                 result_layout = QVBoxLayout(result_container)
-                result_layout.addWidget(self.nb_laplace_result_text)
+                result_layout.addWidget(self.nb_result_text)
                 result_layout.setContentsMargins(0, 0, 0, 0)
                 result_layout.setSpacing(0)
+                result_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+                self.nb_result_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding) # Set size policy
+                self.nb_result_text.setMinimumSize(0, 0)
 
-                # ... (set size policies as shown in previous responses)
-
-                nb_laplace_layout.addWidget(result_container, stretch=1) # stretch=1 for result container
-                tab.setLayout(nb_laplace_layout)
+                nb_layout.addWidget(result_container, stretch=1) # stretch=1 for result container
+                tab.setLayout(nb_layout)
 
 
                 self.nb_load_button.clicked.connect(self.load_data_naive_bayes_laplace)
-            elif i == 4:
+            elif i == 3:
                 self.raw_load_button = QPushButton("Upload file .CSV")
                 self.raw_load_button.setStyleSheet("""
                     QPushButton {
@@ -887,7 +953,7 @@ class MainWindow(QWidget):
                 self.raw_load_button.clicked.connect(self.load_data_raw)
                 self.raw_calculate_button.clicked.connect(self.calculate_raw)
 
-            elif i == 5: 
+            elif i == 4: 
                 self.kmeans_load_button = QPushButton("Upload file .CSV")
                 self.kmeans_load_button.setStyleSheet("""
                     QPushButton {
@@ -1144,15 +1210,11 @@ class MainWindow(QWidget):
 
         if filepath:
             try:
-                 self.nb_laplace_result_text.clear()
+                 self.nb_result_text.clear()
                  self.data = pd.read_csv(filepath) # Store the data
                  if 'Day' in self.data.columns:
                      self.data = self.data.drop(columns=['Day'])
-
-
                  self.label = 'Play'
-
-
                  # Create comboboxes dynamically
                  form_layout = self.findChild(QFormLayout)  # Find the form layout
                  for i in reversed(range(form_layout.count())):
@@ -1166,11 +1228,8 @@ class MainWindow(QWidget):
                      form_layout.addRow(QLabel(f"{feature}:", font=QFont("Arial", 12)), combobox) # Add to layout
 
 
-
-
-
             except Exception as e:
-                 self.nb_laplace_result_text.append(f"Lỗi: {e}")
+                 self.nb_result_text.append(f"Lỗi: {e}")
 
     def predict_laplace(self):
         try:
@@ -1179,47 +1238,60 @@ class MainWindow(QWidget):
                 selected_value = combobox.currentText()
                 instance[feature] = selected_value
 
-            nb_laplace = NaiveBayesLaplace(self.label)
-            nb_laplace.train(self.data)
+            use_laplace = self.laplace_smoothing_checkbox.isChecked()
+            if use_laplace:
+                nb_classifier = NaiveBayesLaplace(self.label)
+            else:
+                nb_classifier = NaiveBayes(self.label)
 
+            nb_classifier.train(self.data)
 
-            self.nb_laplace_result_text.clear()
-
+            self.nb_result_text.clear()
             probabilities = {}
-            for class_value in nb_laplace.class_priors:
-                prob = nb_laplace.class_priors[class_value]
+            for class_value in nb_classifier.class_priors:
+                prob = nb_classifier.class_priors[class_value]
                 prob_str = f"P(Play={class_value})"
 
-                self.nb_laplace_result_text.append(f"\nXét Play = {class_value}:")  # Indicate which class is being considered
-                self.nb_laplace_result_text.append(f"  {prob_str} = {prob:.6f}") # Display the prior probability
+                self.nb_result_text.append(f"\nXét Play = {class_value}:")
+                self.nb_result_text.append(f"  {prob_str} = {prob:.6f}")
 
                 for feature, feature_value in instance.items():
                     if feature != self.label:
-                        if feature_value in nb_laplace.probabilities[class_value][feature]:
-                            conditional_prob = nb_laplace.probabilities[class_value][feature][feature_value]
-                            prob *= conditional_prob
-                            prob_str += f" * P({feature}={feature_value}|Play={class_value})"
-                            self.nb_laplace_result_text.append(f"  P({feature}={feature_value}|Play={class_value}) = {conditional_prob:.6f}")  # Display individual conditional probabilities
+                        if feature in nb_classifier.feature_probs:
+                            if feature_value not in nb_classifier.feature_probs[feature][class_value]:
+                                if use_laplace:
+                                    conditional_prob = nb_classifier.feature_probs[feature][class_value].get(feature_value, 0)
+                                    prob *= conditional_prob
+                                    prob_str += f" * P({feature}={feature_value}|Play={class_value})"
+                                    self.nb_result_text.append(
+                                        f"  P({feature}={feature_value}|Play={class_value}) = {conditional_prob:.6f}")
 
-                        else:
-                            prob = 0
-                            break  # No need to proceed if any value not found
-                probabilities[class_value] = (prob, prob_str)
-                self.nb_laplace_result_text.append(f"  {prob_str} = {prob:.6f}\n") # Final calculation for each Play value
+                                else:  # No Laplace smoothing, set probability to 0
+                                    prob = 0
+                                    self.nb_result_text.append(
+                                        f"Giá trị '{feature_value}' của thuộc tính '{feature}' không có trong dữ liệu huấn luyện.")
+                                    break  # Exit inner loop for this class_value
+                            else:  # feature_value is present
+                                conditional_prob = nb_classifier.feature_probs[feature][class_value][feature_value]
+                                prob *= conditional_prob
+                                prob_str += f" * P({feature}={feature_value}|Play={class_value})"
+                                self.nb_result_text.append(
+                                    f"  P({feature}={feature_value}|Play={class_value}) = {conditional_prob:.6f}")
+                        
+                probabilities[class_value] = (prob, prob_str) # Corrected indentation
+                self.nb_result_text.append(f"  {prob_str} = {prob:.6f}\n")
 
 
             prediction = max(probabilities, key=lambda x: probabilities[x][0]) if probabilities else None
-
-
-
-            self.nb_laplace_result_text.append(f"Dự đoán: Play={prediction}")
-
-
+            if prediction is not None:
+                self.nb_prediction_label.setText(f"Mẫu X được phân vào lớp: {prediction}")
+            else:
+                self.nb_prediction_label.setText("Mẫu X được phân vào lớp: Không thể dự đoán.")
 
         except Exception as e:
-            self.nb_laplace_result_text.append(f"Lỗi: {e}")
+            self.nb_result_text.append(f"Lỗi: {e}")
 
-    def load_data_kmeans(self):  # New method to load data for KMeans
+    def load_data_kmeans(self): 
 
         options = QFileDialog.Options()
         filepath, _ = QFileDialog.getOpenFileName(self, "Chọn tập dữ liệu", "", "CSV Files (*.csv);;All Files (*)", options=options)
