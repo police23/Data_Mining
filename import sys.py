@@ -774,7 +774,7 @@ class MainWindow(QWidget):
                 tab.setLayout(dt_layout)
 
             
-            elif i == 2:  # Naive Bayes
+            elif i == 2: 
                 self.nb_load_button = QPushButton("Upload file .CSV")
                 self.nb_load_button.setStyleSheet("""
                     QPushButton {
@@ -891,7 +891,7 @@ class MainWindow(QWidget):
                         background-color: #4CAF50; /* Brighter green when pressed */
                     }
                 """)
-                self.raw_filepath_display = QLineEdit()  # LineEdit to display filepath
+                self.raw_filepath_display = QLineEdit() 
                 self.raw_filepath_display.setReadOnly(True)
                 self.raw_filepath_display.setStyleSheet("""
                     QLineEdit {
@@ -900,8 +900,11 @@ class MainWindow(QWidget):
                 """)
                 self.raw_result_text = QTextEdit()
                 self.raw_result_text.setReadOnly(True)
-
-                # Create list widgets for selecting X, B, and C
+                self.raw_result_text.setStyleSheet("""
+                    QTextEdit {
+                        font-size: 13pt;
+                    }
+                """)
                 self.X_list = QListWidget()
                 self.X_list.setSelectionMode(QAbstractItemView.ExtendedSelection)  # Allow multiple selections
                 self.B_list = QListWidget()
@@ -929,10 +932,13 @@ class MainWindow(QWidget):
 
                 raw_layout = QVBoxLayout()
                 
-                self.decision_attr_display = QLineEdit()  # Create a QLineEdit
-                self.decision_attr_display.setReadOnly(True)  # Make it read-only
-
-
+                self.decision_attr_display = QLineEdit() 
+                self.decision_attr_display.setReadOnly(True) 
+                self.decision_attr_display.setStyleSheet("""
+                    QLineEdit {
+                        font-size: 12pt;
+                    }
+                """)
                 # Add widgets to the layout
                 raw_layout.addWidget(QLabel("Tải tập dữ liệu:", font=QFont("Arial", 12)))
                 raw_layout.addWidget(self.raw_load_button)
@@ -959,6 +965,7 @@ class MainWindow(QWidget):
                 # C selection
                 raw_layout.addWidget(QLabel("Thuộc tính quyết định:", font=QFont("Arial", 12)))
                 raw_layout.addWidget(self.decision_attr_display)
+
 
 
                 raw_layout.addWidget(self.raw_calculate_button)  # Trigger button
@@ -1046,12 +1053,6 @@ class MainWindow(QWidget):
                 self.kmeans_load_button.clicked.connect(self.load_data_kmeans)
                 self.kmeans_calculate_button.clicked.connect(self.run_kmeans)
            
-
-
-
-            
-
-
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0) #Remove margins on main layout if any
