@@ -648,8 +648,9 @@ class MainWindow(QWidget):
                 self.association_rules_text = QTextEdit()
                 self.association_rules_text.setReadOnly(True)
                 self.association_rules_text.setStyleSheet("font-size: 12pt;")
-                self.apriori_filepath_display = QLineEdit()  # Create the QLineEdit HERE
+                self.apriori_filepath_display = QLineEdit() 
                 self.apriori_filepath_display.setReadOnly(True)
+                self.apriori_filepath_display.setStyleSheet("font-size: 12pt;")
 
                 apriori_layout = QVBoxLayout()
                 apriori_layout.addWidget(QLabel("Tải tập dữ liệu:", font=QFont("Arial", 12)))
@@ -705,6 +706,11 @@ class MainWindow(QWidget):
 
                 self.dt_filepath_display = QLineEdit() 
                 self.dt_filepath_display.setReadOnly(True)
+                self.dt_filepath_display.setStyleSheet("""
+                    QLineEdit {
+                        font-size: 12pt; 
+                    }
+                """)
 
                 self.id3_result_text = QTextEdit()
                 self.id3_result_text.setReadOnly(True)
@@ -720,7 +726,7 @@ class MainWindow(QWidget):
                 self.criterion_combobox.addItem("Độ lợi thông tin", "info_gain")
                 self.criterion_combobox.setStyleSheet("""
                     QComboBox {
-                        font-size: 14pt;  /* Increased combobox font size */
+                        font-size: 13pt;  /* Increased combobox font size */
                         margin-bottom: 15px;
                     }
                     QComboBox QAbstractItemView { /* ... */ }  # Dropdown styles
@@ -791,13 +797,24 @@ class MainWindow(QWidget):
                 self.nb_result_text.setReadOnly(True)
                 self.nb_result_text.setStyleSheet("""
                     QTextEdit {
-                        font-size: 16pt;
+                        font-size: 13pt;
                     }
                 """)
+                self.nb_filepath_display = QLineEdit()
+                self.nb_filepath_display.setReadOnly(True)
+                self.nb_filepath_display.setStyleSheet("""
+                    QLineEdit {
+                        font-size: 12pt;
+                } 
+                """)
                 self.laplace_smoothing_checkbox = QCheckBox("Làm trơn Laplace") 
-
+                self.laplace_smoothing_checkbox.setStyleSheet("""
+                    QCheckBox {
+                        font-size: 12pt;
+                    }
+                """)
                 self.feature_comboboxes = {}
-
+                
                 self.predict_button = QPushButton("Tính toán")
                 self.predict_button.clicked.connect(self.predict_laplace)
                 self.predict_button.setStyleSheet("""
@@ -818,7 +835,7 @@ class MainWindow(QWidget):
                     }
                 """)
 
-                self.nb_prediction_label = QLabel("Mãu X được phân vào lớp:")
+                self.nb_prediction_label = QLabel("Mẫu X được phân vào lớp:")
                 self.nb_prediction_label.setFont(QFont("Arial", 12))
 
                
@@ -826,14 +843,14 @@ class MainWindow(QWidget):
                 nb_layout = QVBoxLayout()
                 nb_layout.addWidget(QLabel("Tải tập dữ liệu:", font=QFont("Arial", 12)))
                 nb_layout.addWidget(self.nb_load_button)
+                nb_layout.addWidget(self.nb_filepath_display)
                 nb_layout.addWidget(self.laplace_smoothing_checkbox)
                 
 
                 form_layout = QFormLayout()  # Form layout for dynamic comboboxes
                 nb_layout.addWidget(QLabel("Chọn giá trị thuộc tính:", font=QFont("Arial", 12)))                
-                nb_layout.addLayout(form_layout)  # Add form layout
+                nb_layout.addLayout(form_layout) 
                 nb_layout.addWidget(self.predict_button)
-
 
                 prediction_layout = QHBoxLayout()
                 prediction_layout.addWidget(self.nb_prediction_label)
@@ -876,9 +893,11 @@ class MainWindow(QWidget):
                 """)
                 self.raw_filepath_display = QLineEdit()  # LineEdit to display filepath
                 self.raw_filepath_display.setReadOnly(True)
-
-                
-
+                self.raw_filepath_display.setStyleSheet("""
+                    QLineEdit {
+                        font-size: 12pt;
+                    }
+                """)
                 self.raw_result_text = QTextEdit()
                 self.raw_result_text.setReadOnly(True)
 
@@ -972,11 +991,13 @@ class MainWindow(QWidget):
                         background-color: #4CAF50; /* Brighter green when pressed */
                     }
                 """)
-                self.kmeans_filepath_display = QLineEdit()  # Create a QLineEdit to display the filepath
-                self.kmeans_filepath_display.setReadOnly(True)  # Make it read-only
-
-
-
+                self.kmeans_filepath_display = QLineEdit() 
+                self.kmeans_filepath_display.setReadOnly(True)
+                self.kmeans_filepath_display.setStyleSheet("""
+                    QLineEdit {
+                        font-size: 12pt;
+                    }
+                """)
                 self.k_input = QSpinBox() # Use a spinbox
                 self.k_input.setMinimum(1)  # Set minimum value (k must be at least 1)
                 self.k_input.setValue(2) # default value
@@ -1195,7 +1216,7 @@ class MainWindow(QWidget):
                 for reduct in reducts_result:
                     reduct_strings.append("(" + " ∧ ".join(reduct) + ")")
 
-                self.raw_result_text.append(" ∨ ".join(reduct_strings))  # Use OR operator
+                self.raw_result_text.append(" ∨ ".join(reduct_strings)) 
 
             else:
                  self.raw_result_text.append("\nKhông tìm thấy reduct nào.")
@@ -1210,22 +1231,34 @@ class MainWindow(QWidget):
 
         if filepath:
             try:
-                 self.nb_result_text.clear()
-                 self.data = pd.read_csv(filepath) # Store the data
-                 if 'Day' in self.data.columns:
+                self.nb_filepath_display.setText(filepath)
+                self.nb_result_text.clear()
+                self.data = pd.read_csv(filepath) # Store the data
+                if 'Day' in self.data.columns:
                      self.data = self.data.drop(columns=['Day'])
-                 self.label = 'Play'
-                 # Create comboboxes dynamically
-                 form_layout = self.findChild(QFormLayout)  # Find the form layout
-                 for i in reversed(range(form_layout.count())):
-                    form_layout.itemAt(i).widget().setParent(None) # Delete existing comboboxes if any
+                self.label = 'Play'
 
-                 self.feature_comboboxes = {}
-                 for feature in self.data.columns.drop(self.label):
-                     combobox = QComboBox()
-                     combobox.addItems(self.data[feature].unique().astype(str))
-                     self.feature_comboboxes[feature] = combobox
-                     form_layout.addRow(QLabel(f"{feature}:", font=QFont("Arial", 12)), combobox) # Add to layout
+                form_layout = self.findChild(QFormLayout)
+                for i in reversed(range(form_layout.count())):
+                    form_layout.itemAt(i).widget().setParent(None) 
+
+                self.feature_comboboxes = {}
+                for feature in self.data.columns.drop(self.label):
+                    combobox = QComboBox()
+                    combobox.addItems(self.data[feature].unique().astype(str))
+                    combobox.setStyleSheet("""
+                        QComboBox {
+                            font-size: 12pt;        
+                            height: 35px;          
+                            padding: 3px 10px;      
+                            min-width: 150px; 
+                        }
+                        QComboBox QAbstractItemView {
+                            font-size: 12pt;
+                        }
+                    """)
+                    self.feature_comboboxes[feature] = combobox
+                    form_layout.addRow(QLabel(f"{feature}:", font=QFont("Arial", 12)), combobox) 
 
 
             except Exception as e:
@@ -1252,7 +1285,7 @@ class MainWindow(QWidget):
                 prob = nb_classifier.class_priors[class_value]
                 prob_str = f"P(Play={class_value})"
 
-                self.nb_result_text.append(f"\nXét Play = {class_value}:")
+                self.nb_result_text.append(f"Xét Play = {class_value}:")
                 self.nb_result_text.append(f"  {prob_str} = {prob:.6f}")
 
                 for feature, feature_value in instance.items():
@@ -1266,19 +1299,19 @@ class MainWindow(QWidget):
                                     self.nb_result_text.append(
                                         f"  P({feature}={feature_value}|Play={class_value}) = {conditional_prob:.6f}")
 
-                                else:  # No Laplace smoothing, set probability to 0
+                                else: 
                                     prob = 0
                                     self.nb_result_text.append(
                                         f"Giá trị '{feature_value}' của thuộc tính '{feature}' không có trong dữ liệu huấn luyện.")
-                                    break  # Exit inner loop for this class_value
-                            else:  # feature_value is present
+                                    break 
+                            else:  
                                 conditional_prob = nb_classifier.feature_probs[feature][class_value][feature_value]
                                 prob *= conditional_prob
                                 prob_str += f" * P({feature}={feature_value}|Play={class_value})"
                                 self.nb_result_text.append(
                                     f"  P({feature}={feature_value}|Play={class_value}) = {conditional_prob:.6f}")
                         
-                probabilities[class_value] = (prob, prob_str) # Corrected indentation
+                probabilities[class_value] = (prob, prob_str)
                 self.nb_result_text.append(f"  {prob_str} = {prob:.6f}\n")
 
 
