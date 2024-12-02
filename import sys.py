@@ -529,8 +529,10 @@ class MainWindow(QWidget):
         QTabBar::tab {
             background: #E0E0E0;
             border: 1px solid #C0C0C0;
-            padding: 5px 15px;
-            min-width: 80px;
+            padding: 8px 20px;
+            min-width: 120px;
+            font-weight: 16px;
+            border-radius : 8px;
         }
         QTabBar::tab:selected {
             background: #2E7D32; 
