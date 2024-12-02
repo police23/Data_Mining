@@ -202,101 +202,149 @@ class DecisionTreeGenerator:
         return None
 
 
-    def generate_rules(self, dot, parent_name, parent_node, train_data, class_list, current_rule=None):
-        if train_data.empty or len(train_data.columns) == 1:  # Check for empty DataFrame or only 'Play' remaining
-            return
+    def generate_rules(self, dot, parent_name, parent_node, train_data, class_list, current_rule=None, rule_index=1):
+        if train_data.empty:
+            return rule_index  # Return rule_index if DataFrame is empty
 
-
-        if len(train_data[self.label].unique()) == 1:  # Check for single class *before* features
+        if len(train_data[self.label].unique()) == 1:  # Pure node (leaf)
             leaf_class = train_data[self.label].iloc[0]
             if current_rule:
-                self.result_text.append(f"R: If {current_rule} Then Play={leaf_class}\n") # Add newline for clarity
-            return
+                self.result_text.append(f"R{rule_index}: If {current_rule} Then Play={leaf_class}\n")
+                rule_index += 1  # Increment after adding rule
+            return rule_index  # Return updated rule_index
 
-        features = train_data.columns.drop(self.label)  # Get available features
+        if len(train_data.columns) == 1:  # All features used
+            if current_rule:
+                majority_class = train_data[self.label].mode().iloc[0] # Find majority class if no more features to split on.
+                self.result_text.append(f"R{rule_index}: If {current_rule} Then Play={majority_class}\n")
+                rule_index += 1 #Increment rule index if rule is generated
+            return rule_index
+
+        features = train_data.columns.drop(self.label)
         best_feature = self.select_best_feature(train_data, class_list, features)
 
 
         if best_feature:
-            dot.node(parent_name, best_feature, style='filled', color='olivedrab1')
-            for feature_value in train_data[best_feature].unique():
-                feature_value_data = train_data[train_data[best_feature] == feature_value]
+            for feature_value in train_data[best_feature].unique(): # loop over unique features
+                feature_value_data = train_data[train_data[best_feature] == feature_value] # get data for current value of best_feature
                 node_name = f"{parent_node}_{feature_value}"
 
                 new_rule = f"{best_feature}={feature_value}"
-                if current_rule:
-                    new_rule = f"{current_rule} AND {new_rule}"  # Changed '^' to 'AND' for better readability
+                if current_rule: # add to existing current rule
+                    new_rule = f"{current_rule} AND {new_rule}"
 
-                self.generate_rules(dot, node_name, node_name, feature_value_data.drop(columns=best_feature),
-                                   class_list, new_rule)
-        else:  # Handle cases where no best feature is found
-            # Determine the majority class in the current data
-            majority_class = train_data[self.label].mode().iloc[0] if not train_data.empty else None
-            if majority_class and current_rule:
-                self.result_text.append(f"R: If {current_rule} Then Play={majority_class}\n")
+                rule_index = self.generate_rules(dot, node_name, node_name, feature_value_data.drop(columns=best_feature), class_list, new_rule, rule_index) # Update and return rule_index
+
+
+
+        elif current_rule:  # No best feature, but have a rule (edge case)
+
+                majority_class = train_data[self.label].mode().iloc[0]
+                self.result_text.append(f"R{rule_index}: If {current_rule} Then Play={majority_class}\n")
+                rule_index += 1
+
+        return rule_index #Always return rule_index
+
 
     def make_tree(self, dot, parent_name, parent_node, train_data, class_list, branch_condition=None):
-        if train_data.shape[0] != 0:
-            if len(train_data[self.label].unique()) == 1:
-                leaf_class = train_data[self.label].iloc[0]
-                dot.node(parent_node, f"{leaf_class}", style='filled', color='lightgray', shape='ellipse')
-                return
+        if train_data.empty:
+            return
 
-            if len(train_data.columns) == 1:  # Check for remaining columns/features
-                return
+        if len(train_data[self.label].unique()) == 1:  # Pure node (single class)
+            leaf_class = train_data[self.label].iloc[0]
+            dot.node(parent_node, f"{leaf_class}", style='filled', color='lightgray', shape='ellipse')
+            return
 
-            if len(train_data.columns) > 1:  # Only calculate best_feature if columns remain
-                features = train_data.columns.drop(self.label)
-                best_feature = self.select_best_feature(train_data, class_list, features)
-            else:
-                best_feature = None  # No more features to split on
+        if len(train_data.columns) == 1:  # No more features to split on, make leaf node based on majority class
+            leaf_class = train_data[self.label].mode().iloc[0]
+            dot.node(parent_name, f"{leaf_class}", style='filled', color='lightgray', shape='ellipse')
+            return
 
-            if best_feature:
-                dot.node(parent_name, best_feature, style='filled', color='olivedrab1', shape='ellipse')
 
-                feature_value_count_dict = train_data[best_feature].value_counts(sort=False)
-                for feature_value, count in feature_value_count_dict.items():
-                    feature_value_data = train_data[train_data[best_feature] == feature_value]
-                    node_name = f"{parent_node}_{feature_value}"
 
-                    assigned_to_node = False
-                    for c in class_list:
-                        class_count = feature_value_data[feature_value_data[self.label] == c].shape[0]
-                        if class_count == count:
-                            leaf_node_name = f"{node_name}_{c}"
-                            dot.node(leaf_node_name, c, style='filled', color='lightgray', shape='ellipse')
-                            dot.edge(parent_name, leaf_node_name, label=feature_value)
-                            assigned_to_node = True
-                            break
+        features = train_data.columns.drop(self.label)  #Get remaining features
+        best_feature = self.select_best_feature(train_data, class_list, features) # Get best features using provided method
 
-                    if not assigned_to_node:
-                        current_branch_condition = f"{best_feature} = {feature_value}"
-                        if branch_condition:
-                            current_branch_condition = f"{branch_condition} AND {current_branch_condition}"
 
-                        if len(feature_value_data.columns) > 1:
-                            next_features = feature_value_data.drop(columns=best_feature).columns.drop(self.label)
-                        else:
-                            next_features = pd.Index([])  # Use empty Index if no features remain
+        if best_feature:
+            dot.node(parent_name, best_feature, style='filled', color='olivedrab1', shape='ellipse')
 
-                        if len(feature_value_data.drop(columns=best_feature)) > 0 and not next_features.empty:
-                            next_best_feature = self.select_best_feature(feature_value_data.drop(columns=best_feature), class_list, next_features)
-                        elif len(feature_value_data) > 0 and len(feature_value_data.columns) == 1 : # Corrected condition: only 'Play' remains
-                            leaf_class = feature_value_data[self.label].iloc[0]
-                            dot.node(node_name, f"{leaf_class}", style='filled', color='lightgray', shape='ellipse')                           
-                        else:
-                            next_best_feature = None
-                        dot.node(node_name, "?", shape='ellipse')
-                        dot.edge(parent_name, node_name, label=feature_value)
-                        self.make_tree(dot, node_name, node_name, feature_value_data.drop(columns=best_feature), class_list, current_branch_condition)
+            for feature_value in train_data[best_feature].unique():  # Iterate through unique feature values of best_feature
+                feature_value_data = train_data[train_data[best_feature] == feature_value]
+                node_name = f"{parent_node}_{feature_value}"
 
+                current_branch_condition = f"{best_feature} = {feature_value}"
+                if branch_condition:
+                    current_branch_condition = f"{branch_condition} AND {current_branch_condition}"
+
+                if len(feature_value_data[self.label].unique()) == 1: # Create leaf if pure.
+                    leaf_class = feature_value_data[self.label].iloc[0]
+                    dot.node(node_name, f"{leaf_class}", style='filled', color='lightgray', shape='ellipse')
+
+                    dot.edge(parent_name, node_name, label=feature_value) # Edge to leaf node
+                    continue  # Skip to next feature value
+
+
+                if len(feature_value_data.columns) > 1:  # If more attributes available, calculate Gini/InfoGain
+
+                    next_features = feature_value_data.drop(columns=best_feature).columns.drop(self.label)  #Drop best feature and class label
+
+                    if self.criterion == "gini":  # Calculate and output Gini for remaining features if more than 1 column exists.
+
+                       self.result_text.append(f"Xét {current_branch_condition}:") # Indicate condition for current node
+                       gini_values = {feature: self.calc_gini_for_feature(feature_value_data, feature, class_list)
+                                       for feature in next_features}
+
+                       if next_features.empty:
+                          majority_label = feature_value_data[self.label].mode().iloc[0] if not feature_value_data.empty else None
+
+                          if majority_label is not None:
+
+                               dot.node(node_name, f"{majority_label}", style="filled", color="lightgrey", shape="ellipse") #Create the leaf node with the majority class label
+                               dot.edge(parent_name, node_name, label = feature_value) # Create the edge to the leaf node
+                          continue  # Skip the loop and do not make a recursive call if there are no features to calculate the gini indices.
+                          
+
+                       for feature, gini in gini_values.items():
+                            self.result_text.append(f"  Gini({feature}) = {gini:.4f}")
+
+                       next_best_feature = self.select_best_feature(feature_value_data, class_list, next_features)  # Calculate the next best feature
+                       self.result_text.append(f"=> Chọn {next_best_feature} làm thuộc tính phân nhánh\n") # Append to output
+
+                    elif self.criterion == "info_gain":  # Calculate and output info gain for remaining features if more than 1 column exists.
+                         self.result_text.append(f"Xét {current_branch_condition}:")
+
+                         info_gain_values = {
+                              feature: self.calc_info_gain_for_feature(feature_value_data, feature, class_list)
+                              for feature in next_features
+                         }
+                         if next_features.empty: # Check to make sure a feature exists for calculation
+                                  majority_label = feature_value_data[self.label].mode().iloc[0] if not feature_value_data.empty else None # Determine majority class
+
+                                  if majority_label is not None:
+
+                                        dot.node(node_name, f"{majority_label}", style="filled", color="lightgrey", shape="ellipse") # Create leaf node and edge
+                                        dot.edge(parent_name, node_name, label=feature_value)
+                                  continue # No features to calculate InfoGain values for, do not recurse.
+
+
+
+                         for feature, info_gain in info_gain_values.items():
+
+                              self.result_text.append(f"  InfoGain({feature}) = {info_gain:.4f}")
+
+                         next_best_feature = self.select_best_feature(feature_value_data, class_list, next_features)
+                         self.result_text.append(f"=> Chọn {next_best_feature} làm thuộc tính phân nhánh\n")
+
+                dot.node(node_name, "?", shape='ellipse')  # Node for next level
+                dot.edge(parent_name, node_name, label=feature_value)  # Edge to next level
+
+                self.make_tree(dot, node_name, node_name, feature_value_data.drop(columns=best_feature), class_list, current_branch_condition)  # Recursive call
 class NaiveBayes: 
     def __init__(self, label):
         self.label = label
         self.probabilities = {}  # Store conditional probabilities P(X|Y)
         self.class_priors = {}    # Store class priors P(Y)
-
-
 
     def train(self, data):
         class_counts = data[self.label].value_counts()  # Số lượng nhãn
@@ -718,7 +766,7 @@ class MainWindow(QWidget):
                 self.id3_result_text.setReadOnly(True)
                 self.id3_result_text.setStyleSheet("""
                     QTextEdit {
-                        font-size: 18pt; /* Increased text edit font size */
+                        font-size: 13pt; /* Increased text edit font size */
                     }
                 """)
 
@@ -762,7 +810,7 @@ class MainWindow(QWidget):
 
                 dt_layout.addWidget(self.dt_calculate_button) # Add calculate button here
 
-                dt_layout.addWidget(QLabel("Các luật của cây quyết định:", font=QFont("Arial", 12)))
+                dt_layout.addWidget(QLabel("Kết quả:", font=QFont("Arial", 12)))
                 result_container = QWidget()
                 result_layout = QVBoxLayout(result_container)
                 result_layout.addWidget(self.id3_result_text)
@@ -1430,30 +1478,70 @@ class MainWindow(QWidget):
     
     def calculate_decision_tree(self):
         try:
-            self.id3_result_text.clear()  # Clear previous results
-
+            self.id3_result_text.clear()
             criterion = self.criterion_combobox.currentData()
-            label = "Play"  # Or determine dynamically if needed
+            label = "Play"  # Or determine dynamically
 
-            if not hasattr(self, 'dt_data'): # Check if data is loaded
-                 self.id3_result_text.append("Vui lòng tải dữ liệu trước.")
-                 return
+            if not hasattr(self, 'dt_data'):
+                self.id3_result_text.append("Vui lòng tải dữ liệu trước.")
+                return
 
-            if 'Day' in self.dt_data.columns:  # Check and drop Day if exist
+            if 'Day' in self.dt_data.columns:
                 self.dt_data = self.dt_data.drop(columns=['Day'])
 
             class_list = self.dt_data[label].unique()
+
             dot = Digraph()
-            dot.node('root', 'root')
 
             decision_tree_gen = DecisionTreeGenerator(label, criterion)
             decision_tree_gen.result_text = self.id3_result_text
 
-            decision_tree_gen.make_tree(dot, 'root', 'root', self.dt_data, class_list) # Correctly use self.dt_data
+            features = self.dt_data.columns.drop(label)  # Define features here, outside the if/else blocks
+
+            # Initial calculations at the root node
+            if criterion == "gini":
+                self.id3_result_text.append("Xét nút gốc:")
+                gini_values = {feature: decision_tree_gen.calc_gini_for_feature(self.dt_data, feature, class_list) for feature in features}
+
+                # Check if there are features available to split on
+                if gini_values:
+                     for feature, gini in gini_values.items():
+                         self.id3_result_text.append(f"  Gini({feature}) = {gini:.4f}")
+                     best_feature = decision_tree_gen.select_best_feature(self.dt_data, class_list, features)
+                     self.id3_result_text.append(f"=> Chọn {best_feature} làm thuộc tính phân nhánh\n")
+                else:  # No features to split, create leaf node based on majority class.
+                      majority_class = self.dt_data[self.label].mode().iloc[0] if not self.dt_data.empty else None
+                      if majority_class:
+                        self.id3_result_text.append(f"Tạo nút lá: {majority_class}")
+
+                      return  # Stop further processing
+
+
+            elif criterion == "info_gain":  # Calculate info gain for each feature if criterion is info_gain
+                 self.id3_result_text.append("Xét nút gốc:")
+
+
+                 info_gain_values = {feature: decision_tree_gen.calc_info_gain_for_feature(self.dt_data, feature, class_list) for feature in features}
+                 if info_gain_values: # Ensure that features exist for this calculation at the root node
+                      for feature, info_gain in info_gain_values.items():
+                           self.id3_result_text.append(f"  InfoGain({feature}) = {info_gain:.4f}")
+
+
+                      best_feature = decision_tree_gen.select_best_feature(self.dt_data, class_list, features)
+                      self.id3_result_text.append(f"=> Chọn {best_feature} làm thuộc tính phân nhánh\n")
+                 else:
+                     majority_class = self.dt_data[self.label].mode().iloc[0] if not self.dt_data.empty else None  # Get majority class in case there are no more features but more than one class
+                     if majority_class:
+                         self.id3_result_text.append(f"Tạo nút lá: {majority_class}")
+
+
+                     return # No features to split on
+
+            decision_tree_gen.make_tree(dot, 'root', 'root', self.dt_data, class_list)
 
             dot.render('decision_tree', view=True)
+            self.id3_result_text.append("\nCác luật được tạo:")
 
-            self.id3_result_text.append("Các luật được tạo:\n")
             dot_rules = Digraph()
             decision_tree_gen.generate_rules(dot_rules, 'root', 'root', self.dt_data, class_list)
 
