@@ -481,7 +481,7 @@ class RoughSetAnalyzer:
         k = sum(len(approx) for approx in lower_approximations) / len(U) if len(U) > 0 else 0
 
         # Construct the dependency message
-        dependency_text = f"Phụ thuộc của {C} vào B: "
+        dependency_text = f"Phụ thuộc của thuộc tính {C} vào B: "
 
         if k == 1:
             dependency_text += "Phụ thuộc hoàn toàn (k = 1)"
@@ -600,6 +600,7 @@ class MainWindow(QWidget):
         self.stacked_widget = QStackedWidget()
 
         items = [  # Your tab items
+            ("Tiền xử lý dữ liệu", "preprocessing.png"),  # New tab for data preprocessing
             ("Tập phổ biến và luật kết hợp", "book.png"),
             ("Decision Tree", "ID3.png"),
             ("Naive Bayes", "NB.png"),
@@ -613,16 +614,16 @@ class MainWindow(QWidget):
             self.tabs.addTab(tab, icon, text)
             self.tabs.setIconSize(QSize(20, 20))
             
-            if i == 0:  # Apriori Tab
-                self.apriori_load_button = QPushButton("Upload file .CSV")
-                self.apriori_load_button.setStyleSheet("""
+            if i == 0:  # Data Preprocessing Tab
+                self.preprocessing_load_button = QPushButton("Upload file .CSV")
+                self.preprocessing_load_button.setStyleSheet("""
                     QPushButton {
                         background-color: #2E7D32; /* Green background */
                         color: white;            /* White text */
                         font-weight: bold;       /* Bold text */
                         border: none;            /* No border */
                         padding: 8px 16px;      /* Padding around text */
-                        border-radius: 4px;
+                        border-radius: 10px;
                         font-size : 20px;      /* Rounded corners */
                     }
                     QPushButton:hover {
@@ -632,7 +633,66 @@ class MainWindow(QWidget):
                         background-color: #4CAF50; /* Brighter green when pressed */
                     }
                 """)
-                self.apriori_load_button.clicked.connect(self.load_data_apriori) # Connect
+                self.preprocessing_load_button.clicked.connect(lambda: self.load_data('preprocessing'))
+
+                self.preprocessing_filepath_display = QLineEdit()
+                self.preprocessing_filepath_display.setReadOnly(True)
+                self.preprocessing_filepath_display.setStyleSheet("font-size: 12pt;")
+
+                self.preprocessing_calculate_button = QPushButton("Tính toán hệ số tương quan")
+                self.preprocessing_calculate_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: #2E7D32; /* Green background */
+                        color: white;            /* White text */
+                        font-weight: bold;       /* Bold text */
+                        border: none;            /* No border */
+                        padding: 8px 16px;      /* Padding around text */
+                        border-radius: 10px;
+                        font-size : 20px;      /* Rounded corners */
+                    }
+                    QPushButton:hover {
+                        background-color: #1B5E20; /* Darker green on hover */
+                    }
+                    QPushButton:pressed {
+                        background-color: #4CAF50; /* Brighter green when pressed */
+                    }
+                """)
+                self.preprocessing_calculate_button.clicked.connect(self.calculate_correlation)
+
+                self.preprocessing_result_text = QTextEdit()
+                self.preprocessing_result_text.setReadOnly(True)
+                self.preprocessing_result_text.setStyleSheet("font-size: 13pt;")
+
+                preprocessing_layout = QVBoxLayout()
+                preprocessing_layout.addWidget(QLabel("Tải tập dữ liệu:", font=QFont("Arial", 12)))
+                preprocessing_layout.addWidget(self.preprocessing_load_button)
+                preprocessing_layout.addWidget(self.preprocessing_filepath_display)
+                preprocessing_layout.addWidget(self.preprocessing_calculate_button)
+                preprocessing_layout.addWidget(QLabel("Kết quả:", font=QFont("Arial", 12)))
+                preprocessing_layout.addWidget(self.preprocessing_result_text, stretch=1)
+
+                tab.setLayout(preprocessing_layout)
+
+            if i == 1:  # Apriori Tab
+                self.apriori_load_button = QPushButton("Upload file .CSV")
+                self.apriori_load_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: #2E7D32; /* Green background */
+                        color: white;            /* White text */
+                        font-weight: bold;       /* Bold text */
+                        border: none;            /* No border */
+                        padding: 8px 16px;      /* Padding around text */
+                        border-radius: 10px;
+                        font-size : 20px;      /* Rounded corners */
+                    }
+                    QPushButton:hover {
+                        background-color: #1B5E20; /* Darker green on hover */
+                    }
+                    QPushButton:pressed {
+                        background-color: #4CAF50; /* Brighter green when pressed */
+                    }
+                """)
+                self.apriori_load_button.clicked.connect(lambda: self.load_data('apriori')) # Connect
 
                 self.apriori_calculate_button = QPushButton("Tính toán") #Apriori button
                 self.apriori_calculate_button.setStyleSheet("""
@@ -642,7 +702,7 @@ class MainWindow(QWidget):
                         font-weight: bold;       /* Bold text */
                         border: none;            /* No border */
                         padding: 8px 16px;      /* Padding around text */
-                        border-radius: 4px;
+                        border-radius: 10px;
                         font-size : 20px;      /* Rounded corners */
                     }
                     QPushButton:hover {
@@ -658,7 +718,7 @@ class MainWindow(QWidget):
                 self.apriori_result_text.setReadOnly(True)
                 self.apriori_result_text.setStyleSheet("""
                     QTextEdit {
-                        font-size: 15pt; 
+                        font-size: 13pt; 
                     }
                 """)
 
@@ -677,7 +737,7 @@ class MainWindow(QWidget):
                         font-weight: bold;       /* Bold text */
                         border: none;            /* No border */
                         padding: 8px 16px;      /* Padding around text */
-                        border-radius: 4px;
+                        border-radius: 10px;
                         font-size : 20px;      /* Rounded corners */
                     }
                     QPushButton:hover {
@@ -691,21 +751,23 @@ class MainWindow(QWidget):
 
                 self.frequent_itemsets_text = QTextEdit() # Create QTextEdits *before* adding to layout
                 self.frequent_itemsets_text.setReadOnly(True)
-                self.frequent_itemsets_text.setStyleSheet("font-size: 12pt;")
+                self.frequent_itemsets_text.setFixedHeight(60)  # Set fixed height for two lines
+                self.frequent_itemsets_text.setStyleSheet("font-size: 13pt;")
 
 
                 self.maximal_itemsets_text = QTextEdit()
                 self.maximal_itemsets_text.setReadOnly(True)
-                self.maximal_itemsets_text.setStyleSheet("font-size: 12pt;")
+                self.maximal_itemsets_text.setFixedHeight(60)  # Set fixed height for two lines
+                self.maximal_itemsets_text.setStyleSheet("font-size: 13pt;")
 
 
 
                 self.association_rules_text = QTextEdit()
                 self.association_rules_text.setReadOnly(True)
-                self.association_rules_text.setStyleSheet("font-size: 12pt;")
+                self.association_rules_text.setStyleSheet("font-size: 13pt;")
                 self.apriori_filepath_display = QLineEdit() 
                 self.apriori_filepath_display.setReadOnly(True)
-                self.apriori_filepath_display.setStyleSheet("font-size: 12pt;")
+                self.apriori_filepath_display.setStyleSheet("font-size: 13pt;")
 
                 apriori_layout = QVBoxLayout()
                 apriori_layout.addWidget(QLabel("Tải tập dữ liệu:", font=QFont("Arial", 12)))
@@ -729,16 +791,16 @@ class MainWindow(QWidget):
                 apriori_layout.addWidget(self.apriori_calculate_button)
 
                 apriori_layout.addWidget(QLabel("Các tập phổ biến thỏa ngưỡng:", font=QFont("Arial", 12)))
-                apriori_layout.addWidget(self.frequent_itemsets_text, stretch=1) # Added to layout
+                apriori_layout.addWidget(self.frequent_itemsets_text)  # No stretch needed
 
                 apriori_layout.addWidget(QLabel("Tập phổ biến tối đại:", font=QFont("Arial", 12)))
-                apriori_layout.addWidget(self.maximal_itemsets_text, stretch=1)  # Added to layout
+                apriori_layout.addWidget(self.maximal_itemsets_text)  # No stretch needed
                 apriori_layout.addWidget(QLabel("Luật kết hợp:", font=QFont("Arial", 12)))
                 apriori_layout.addWidget(self.association_rules_text, stretch=1)
                 tab.setLayout(apriori_layout)
 
 
-            if i == 1:  # ID3 Tab
+            if i == 2:  # ID3 Tab
                 self.id3_load_button = QPushButton("Upload file .CSV")
                 self.id3_load_button.setStyleSheet("""
                     QPushButton {
@@ -747,7 +809,7 @@ class MainWindow(QWidget):
                         font-weight: bold;       /* Bold text */
                         border: none;            /* No border */
                         padding: 8px 16px;      /* Padding around text */
-                        border-radius: 4px;
+                        border-radius: 10px;
                         font-size : 20px;      /* Rounded corners */
                     }
                     QPushButton:hover {
@@ -757,7 +819,7 @@ class MainWindow(QWidget):
                         background-color: #4CAF50; /* Brighter green when pressed */
                     }
                 """)
-                self.id3_load_button.clicked.connect(self.load_data_decision_tree)
+                self.id3_load_button.clicked.connect(lambda: self.load_data('decision_tree'))
 
                 self.dt_filepath_display = QLineEdit() 
                 self.dt_filepath_display.setReadOnly(True)
@@ -767,9 +829,17 @@ class MainWindow(QWidget):
                     }
                 """)
 
-                self.id3_result_text = QTextEdit()
-                self.id3_result_text.setReadOnly(True)
-                self.id3_result_text.setStyleSheet("""
+                self.id3_result_text_nodes = QTextEdit()
+                self.id3_result_text_nodes.setReadOnly(True)
+                self.id3_result_text_nodes.setStyleSheet("""
+                    QTextEdit {
+                        font-size: 13pt; /* Increased text edit font size */
+                    }
+                """)
+
+                self.id3_result_text_rules = QTextEdit()
+                self.id3_result_text_rules.setReadOnly(True)
+                self.id3_result_text_rules.setStyleSheet("""
                     QTextEdit {
                         font-size: 13pt; /* Increased text edit font size */
                     }
@@ -794,7 +864,7 @@ class MainWindow(QWidget):
                         font-weight: bold;       /* Bold text */
                         border: none;            /* No border */
                         padding: 8px 16px;      /* Padding around text */
-                        border-radius: 4px;
+                        border-radius: 10px;
                         font-size : 20px;      /* Rounded corners */
                     }
                     QPushButton:hover {
@@ -815,21 +885,34 @@ class MainWindow(QWidget):
 
                 dt_layout.addWidget(self.dt_calculate_button) # Add calculate button here
 
-                dt_layout.addWidget(QLabel("Kết quả:", font=QFont("Arial", 12)))
-                result_container = QWidget()
-                result_layout = QVBoxLayout(result_container)
-                result_layout.addWidget(self.id3_result_text)
-                result_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins
-                result_layout.setSpacing(0)  # Remove spacing within container
-                result_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-                self.id3_result_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-                self.id3_result_text.setMinimumSize(0,0)  # Ensure no minimum size restriction on text edit
+                dt_layout.addWidget(QLabel("Xét các nút chọn để phân nhánh:", font=QFont("Arial", 12)))
+                result_container_nodes = QWidget()
+                result_layout_nodes = QVBoxLayout(result_container_nodes)
+                result_layout_nodes.addWidget(self.id3_result_text_nodes)
+                result_layout_nodes.setContentsMargins(0, 0, 0, 0)  # Remove margins
+                result_layout_nodes.setSpacing(0)  # Remove spacing within container
+                result_container_nodes.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+                self.id3_result_text_nodes.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+                self.id3_result_text_nodes.setMinimumSize(0,0)  # Ensure no minimum size restriction on text edit
 
-                dt_layout.addWidget(result_container, stretch=1) # stretch on the container
+                dt_layout.addWidget(result_container_nodes, stretch=1) # stretch on the container
+
+                dt_layout.addWidget(QLabel("Các luật được tạo:", font=QFont("Arial", 12)))
+                result_container_rules = QWidget()
+                result_layout_rules = QVBoxLayout(result_container_rules)
+                result_layout_rules.addWidget(self.id3_result_text_rules)
+                result_layout_rules.setContentsMargins(0, 0, 0, 0)  # Remove margins
+                result_layout_rules.setSpacing(0)  # Remove spacing within container
+                result_container_rules.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+                self.id3_result_text_rules.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+                self.id3_result_text_rules.setMinimumSize(0,0)  # Ensure no minimum size restriction on text edit
+
+                dt_layout.addWidget(result_container_rules, stretch=1) # stretch on the container
+
                 tab.setLayout(dt_layout)
 
             
-            elif i == 2: 
+            elif i == 3: 
                 self.nb_load_button = QPushButton("Upload file .CSV")
                 self.nb_load_button.setStyleSheet("""
                     QPushButton {
@@ -838,8 +921,8 @@ class MainWindow(QWidget):
                         font-weight: bold;       /* Bold text */
                         border: none;            /* No border */
                         padding: 8px 16px;      /* Padding around text */
-                        border-radius: 4px;
-                        font-size : 20px;      /* Rounded corners */
+                        border-radius: 10px;    /* Rounded corners */
+                        font-size : 20px;      
                     }
                     QPushButton:hover {
                         background-color: #1B5E20; /* Darker green on hover */
@@ -879,7 +962,7 @@ class MainWindow(QWidget):
                         font-weight: bold;       /* Bold text */
                         border: none;            /* No border */
                         padding: 8px 16px;      /* Padding around text */
-                        border-radius: 4px;
+                        border-radius: 10px;    /* Rounded corners */
                         font-size : 20px;      /* Rounded corners */
                     }
                     QPushButton:hover {
@@ -890,29 +973,21 @@ class MainWindow(QWidget):
                     }
                 """)
 
-                self.nb_prediction_label = QLabel("Mẫu X được phân vào lớp:")
-                self.nb_prediction_label.setFont(QFont("Arial", 12))
-
-               
-
                 nb_layout = QVBoxLayout()
                 nb_layout.addWidget(QLabel("Tải tập dữ liệu:", font=QFont("Arial", 12)))
                 nb_layout.addWidget(self.nb_load_button)
                 nb_layout.addWidget(self.nb_filepath_display)
                 nb_layout.addWidget(self.laplace_smoothing_checkbox)
                 
-
+    
                 form_layout = QFormLayout()  # Form layout for dynamic comboboxes
                 nb_layout.addWidget(QLabel("Chọn giá trị thuộc tính:", font=QFont("Arial", 12)))                
                 nb_layout.addLayout(form_layout) 
                 nb_layout.addWidget(self.predict_button)
-
-                prediction_layout = QHBoxLayout()
-                prediction_layout.addWidget(self.nb_prediction_label)
-                nb_layout.addLayout(prediction_layout) 
+    
                 nb_layout.addWidget(QLabel("Kết quả:", font=QFont("Arial", 12)))
                 
-
+    
                 result_container = QWidget()
                 result_layout = QVBoxLayout(result_container)
                 result_layout.addWidget(self.nb_result_text)
@@ -921,13 +996,20 @@ class MainWindow(QWidget):
                 result_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
                 self.nb_result_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding) # Set size policy
                 self.nb_result_text.setMinimumSize(0, 0)
-
+    
                 nb_layout.addWidget(result_container, stretch=1) # stretch=1 for result container
+    
+                self.nb_prediction_label = QLabel("Mẫu X được phân vào lớp:")
+                self.nb_prediction_label.setFont(QFont("Arial", 14))  # Increased font size
+                prediction_layout = QHBoxLayout()
+                prediction_layout.addWidget(self.nb_prediction_label)
+                nb_layout.addLayout(prediction_layout) 
+    
                 tab.setLayout(nb_layout)
-
-
-                self.nb_load_button.clicked.connect(self.load_data_naive_bayes_laplace)
-            elif i == 3:
+    
+    
+                self.nb_load_button.clicked.connect(lambda: self.load_data('naive_bayes'))
+            elif i == 4:
                 self.raw_load_button = QPushButton("Upload file .CSV")
                 self.raw_load_button.setStyleSheet("""
                     QPushButton {
@@ -936,7 +1018,7 @@ class MainWindow(QWidget):
                         font-weight: bold;       /* Bold text */
                         border: none;            /* No border */
                         padding: 8px 16px;      /* Padding around text */
-                        border-radius: 4px;
+                        border-radius: 10px;    /* Rounded corners */
                         font-size : 20px;      /* Rounded corners */
                     }
                     QPushButton:hover {
@@ -953,9 +1035,25 @@ class MainWindow(QWidget):
                         font-size: 12pt;
                     }
                 """)
-                self.raw_result_text = QTextEdit()
-                self.raw_result_text.setReadOnly(True)
-                self.raw_result_text.setStyleSheet("""
+                self.raw_result_text_approx = QTextEdit()
+                self.raw_result_text_approx.setReadOnly(True)
+                self.raw_result_text_approx.setStyleSheet("""
+                    QTextEdit {
+                        font-size: 13pt;
+                    }
+                """)
+                self.raw_result_text_dependency = QTextEdit()
+                self.raw_result_text_dependency.setReadOnly(True)
+                self.raw_result_text_dependency.setFixedHeight(60)  # Set fixed height for two lines
+                self.raw_result_text_dependency.setStyleSheet("""
+                    QTextEdit {
+                        font-size: 13pt;
+                    }
+                """)
+                self.raw_result_text_reducts = QTextEdit()
+                self.raw_result_text_reducts.setReadOnly(True)
+                self.raw_result_text_reducts.setFixedHeight(60)  # Set fixed height for two lines
+                self.raw_result_text_reducts.setStyleSheet("""
                     QTextEdit {
                         font-size: 13pt;
                     }
@@ -974,7 +1072,7 @@ class MainWindow(QWidget):
                         font-weight: bold;       /* Bold text */
                         border: none;            /* No border */
                         padding: 8px 16px;      /* Padding around text */
-                        border-radius: 4px;
+                        border-radius: 10px;    /* Rounded corners */
                         font-size : 20px;      /* Rounded corners */
                     }
                     QPushButton:hover {
@@ -1025,16 +1123,21 @@ class MainWindow(QWidget):
 
                 raw_layout.addWidget(self.raw_calculate_button)  # Trigger button
 
-                raw_layout.addWidget(QLabel("Kết quả:", font=QFont("Arial", 12)))
-                raw_layout.addWidget(self.raw_result_text, stretch=1) # Set result area to stretch
+                raw_layout.addWidget(QLabel("Xấp xỉ dưới, xấp xỉ trên, hệ số xấp xỉ:", font=QFont("Arial", 12)))
+                raw_layout.addWidget(self.raw_result_text_approx, stretch=1) # Set result area to stretch
 
+                raw_layout.addWidget(QLabel("Phụ thuộc thuộc tính:", font=QFont("Arial", 12)))
+                raw_layout.addWidget(self.raw_result_text_dependency)  # No stretch needed
+
+                raw_layout.addWidget(QLabel("Rút gọn của hệ quyết định:", font=QFont("Arial", 12)))
+                raw_layout.addWidget(self.raw_result_text_reducts)  # No stretch needed
 
                 tab.setLayout(raw_layout)
 
-                self.raw_load_button.clicked.connect(self.load_data_raw)
+                self.raw_load_button.clicked.connect(lambda: self.load_data('raw'))
                 self.raw_calculate_button.clicked.connect(self.calculate_raw)
 
-            elif i == 4: 
+            elif i == 5: 
                 self.kmeans_load_button = QPushButton("Upload file .CSV")
                 self.kmeans_load_button.setStyleSheet("""
                     QPushButton {
@@ -1043,7 +1146,7 @@ class MainWindow(QWidget):
                         font-weight: bold;       /* Bold text */
                         border: none;            /* No border */
                         padding: 8px 16px;      /* Padding around text */
-                        border-radius: 4px;
+                        border-radius: 10px;    /* Rounded corners */
                         font-size : 20px;      /* Rounded corners */
                     }
                     QPushButton:hover {
@@ -1072,8 +1175,9 @@ class MainWindow(QWidget):
                         font-weight: bold;       /* Bold text */
                         border: none;            /* No border */
                         padding: 8px 16px;      /* Padding around text */
-                        border-radius: 4px;
+                        border-radius: 10px;
                         font-size : 20px;      /* Rounded corners */
+                       
                     }
                     QPushButton:hover {
                         background-color: #1B5E20; /* Darker green on hover */
@@ -1088,24 +1192,41 @@ class MainWindow(QWidget):
                 self.kmeans_result_text.setReadOnly(True)
                 self.kmeans_result_text.setStyleSheet("""
                     QTextEdit {
-                        font-size: 18pt;
+                        font-size: 14pt;
                     }
                 """)
+
+                self.kmeans_cluster_text = QTextEdit()
+                self.kmeans_cluster_text.setReadOnly(True)
+                self.kmeans_cluster_text.setFixedHeight(90) 
+                self.kmeans_cluster_text.setStyleSheet("font-size: 13pt;")
+              
 
                 kmeans_layout = QVBoxLayout()
                 kmeans_layout.addWidget(QLabel("Tải tập dữ liệu:", font=QFont("Arial", 12)))
                 kmeans_layout.addWidget(self.kmeans_load_button)
                 kmeans_layout.addWidget(self.kmeans_filepath_display)
-                kmeans_layout.addWidget(QLabel("Nhập k:", font=QFont("Arial", 12)))
-                kmeans_layout.addWidget(self.k_input)
+                
+                k_input_layout = QHBoxLayout()  # Create a horizontal layout for the k input
+                k_input_label = QLabel("Nhập k:", font=QFont("Arial", 12))
+                k_input_label.setFixedWidth(100)  # Set a fixed width for the label
+                k_input_layout.addWidget(k_input_label)
+                self.k_input.setFixedWidth(200)  # Set a fixed width for the input field
+                k_input_layout.addWidget(self.k_input)
+                k_input_layout.addStretch()  # Add a stretch to push the input to the left
+                k_input_layout.setContentsMargins(0, 0, 50, 0)
+               
+                kmeans_layout.addLayout(k_input_layout)  # Add the horizontal layout to the main layout
+                
                 kmeans_layout.addWidget(self.kmeans_calculate_button)
-                kmeans_layout.addWidget(QLabel("Kết quả:", font=QFont("Arial", 12)))
+                kmeans_layout.addWidget(QLabel("Kết quả tính toán:", font=QFont("Arial", 12)))
                 kmeans_layout.addWidget(self.kmeans_result_text, stretch=1)
-
+                kmeans_layout.addWidget(QLabel("Kết quả phân cụm:", font=QFont("Arial", 12)))
+                kmeans_layout.addWidget(self.kmeans_cluster_text, stretch=1)
 
                 tab.setLayout(kmeans_layout)
 
-                self.kmeans_load_button.clicked.connect(self.load_data_kmeans)
+                self.kmeans_load_button.clicked.connect(lambda: self.load_data('kmeans'))
                 self.kmeans_calculate_button.clicked.connect(self.run_kmeans)
            
 
@@ -1121,22 +1242,88 @@ class MainWindow(QWidget):
         # Ensure MainWindow allows resizing
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-    def load_data_apriori(self):
+    def load_data(self, tab_name):
         options = QFileDialog.Options()
         filepath, _ = QFileDialog.getOpenFileName(self, "Chọn tập dữ liệu", "", "CSV Files (*.csv);;All Files (*)", options=options)
         if filepath:
             try:
-                self.apriori_filepath_display.setText(filepath)
-                self.apriori_data = []  # Initialize an empty list for transactions
-                df = pd.read_csv(filepath)
-
-                # Correctly create transactions by grouping items
-                for transaction_id in df['Mã hóa đơn'].unique(): # Get each transaction and loop through each transaction's items
-                    transaction = df[df['Mã hóa đơn'] == transaction_id]['Mã hàng'].tolist()
-                    self.apriori_data.append(transaction)
-
+                if tab_name == 'preprocessing':
+                    self.preprocessing_filepath_display.setText(filepath)
+                    self.preprocessing_data = pd.read_csv(filepath)
+                elif tab_name == 'apriori':
+                    self.apriori_filepath_display.setText(filepath)
+                    self.apriori_data = []
+                    df = pd.read_csv(filepath)
+                    for transaction_id in df['Mã hóa đơn'].unique():
+                        transaction = df[df['Mã hóa đơn'] == transaction_id]['Mã hàng'].tolist()
+                        self.apriori_data.append(transaction)
+                elif tab_name == 'raw':
+                    self.raw_filepath_display.setText(filepath)
+                    self.raw_data = pd.read_csv(filepath)
+                    if 'Day' in self.raw_data.columns:
+                        self.raw_data = self.raw_data.drop(columns=['Day'])
+                    self.X_list.clear()
+                    self.X_list.addItems(self.raw_data["O"].unique().astype(str))
+                    self.B_list.clear()
+                    if len(self.raw_data.columns) > 0:
+                        decision_attribute = self.raw_data.columns[-1]
+                        self.decision_attr_display.setText(decision_attribute)
+                        columns_to_add = self.raw_data.columns.drop(["O", decision_attribute]).tolist()
+                        self.B_list.addItems(columns_to_add)
+                elif tab_name == 'naive_bayes':
+                    self.nb_filepath_display.setText(filepath)
+                    self.nb_result_text.clear()
+                    self.data = pd.read_csv(filepath)
+                    if 'Day' in self.data.columns:
+                        self.data = self.data.drop(columns=['Day'])
+                    self.label = 'Play'
+                    form_layout = self.findChild(QFormLayout)
+                    for i in reversed(range(form_layout.count())):
+                        form_layout.itemAt(i).widget().setParent(None)
+                    self.feature_comboboxes = {}
+                    for feature in self.data.columns.drop(self.label):
+                        combobox = QComboBox()
+                        combobox.addItems(self.data[feature].unique().astype(str))
+                        combobox.setStyleSheet("""
+                            QComboBox {
+                                font-size: 12pt;        
+                                height: 35px;          
+                                padding: 3px 10px;      
+                                min-width: 150px; 
+                            }
+                            QComboBox QAbstractItemView {
+                                font-size: 12pt;
+                            }
+                        """)
+                        self.feature_comboboxes[feature] = combobox
+                        form_layout.addRow(QLabel(f"{feature}:", font=QFont("Arial", 12)), combobox)
+                elif tab_name == 'kmeans':
+                    self.kmeans_filepath_display.setText(filepath)
+                    self.kmeans_result_text.clear()
+                    self.kmeans_cluster_text.clear()
+                    self.kmeans_data = pd.read_csv(filepath)
+                    if 'X' in self.kmeans_data.columns:
+                        self.kmeans_data = self.kmeans_data.drop(columns=['X'])
+                    self.kmeans_data = self.kmeans_data.apply(pd.to_numeric, errors='coerce').dropna()
+                    self.kmeans_data = self.kmeans_data.values
+                elif tab_name == 'decision_tree':
+                    self.dt_filepath_display.setText(filepath)
+                    self.dt_data = pd.read_csv(filepath)
+                    if 'Day' in self.dt_data.columns:
+                        self.dt_data = self.dt_data.drop(columns=['Day'])
             except Exception as e:
-                self.apriori_result_text.append(f"Lỗi khi tải dữ liệu: {e}")
+                if tab_name == 'preprocessing':
+                    self.preprocessing_result_text.append(f"Lỗi khi tải dữ liệu: {e}")
+                elif tab_name == 'apriori':
+                    self.apriori_result_text.append(f"Lỗi khi tải dữ liệu: {e}")
+                elif tab_name == 'raw':
+                    self.raw_result_text_approx.append(f"Lỗi: {e}")
+                elif tab_name == 'naive_bayes':
+                    self.nb_result_text.append(f"Lỗi: {e}")
+                elif tab_name == 'kmeans':
+                    self.kmeans_result_text.append(f"Lỗi khi tải dữ liệu: {e}")
+                elif tab_name == 'decision_tree':
+                    self.id3_result_text.append(f"Lỗi: {e}")
 
     def run_apriori(self):
         try:
@@ -1204,70 +1391,42 @@ class MainWindow(QWidget):
         except Exception as e:
             self.apriori_result_text.append(f"Lỗi: {e}")
  
-    def load_data_raw(self):
-        options = QFileDialog.Options()
-        filepath, _ = QFileDialog.getOpenFileName(self, "Chọn tập dữ liệu", "", "CSV Files (*.csv);;All Files (*)", options=options)
-
-        if filepath:
-            try:
-                 self.raw_result_text.clear()  # Clear any existing result text
-                 self.raw_filepath_display.setText(filepath) 
-                 self.raw_data = pd.read_csv(filepath) # Load raw data
-                 if 'Day' in self.raw_data.columns:
-                     self.raw_data = self.raw_data.drop(columns=['Day'])
-
-
-                 # Populate list widgets
-                 self.X_list.clear()
-                 self.X_list.addItems(self.raw_data["O"].unique().astype(str))
-
-                 self.B_list.clear()
-                # Exclude 'Tên' and the dynamically determined decision attribute
-                 if len(self.raw_data.columns) > 0:
-                    decision_attribute = self.raw_data.columns[-1]  # Determine decision attribute
-                    self.decision_attr_display.setText(decision_attribute) # Set the display
-                    columns_to_add = self.raw_data.columns.drop(["O", decision_attribute]).tolist()  # Exclude these
-                    self.B_list.addItems(columns_to_add)
-
-
-            except Exception as e:
-                self.raw_result_text.append(f"Lỗi: {e}")
-
-
     def calculate_raw(self):
         try:
-            self.raw_result_text.clear()
+            self.raw_result_text_approx.clear()
+            self.raw_result_text_dependency.clear()
+            self.raw_result_text_reducts.clear()
 
             selected_X = [item.text() for item in self.X_list.selectedItems()]
             selected_B = [item.text() for item in self.B_list.selectedItems()]
 
             if not selected_X or not selected_B :  # Check if X and B are selected
-                self.raw_result_text.append("Vui lòng chọn X và B.")
+                self.raw_result_text_approx.append("Vui lòng chọn X và B.")
                 return
 
             if len(self.raw_data.columns) > 0:
                 decision_attribute = self.raw_data.columns[-1]
             else:
-                self.raw_result_text.append("Tập dữ liệu trống hoặc không hợp lệ.")
+                self.raw_result_text_approx.append("Tập dữ liệu trống hoặc không hợp lệ.")
                 return
 
 
             analyzer = RoughSetAnalyzer(self.raw_data)
 
             lower, upper = analyzer.approximate(selected_X, selected_B)
-            self.raw_result_text.append(f"Xấp xỉ dưới của X qua tập thuộc tính B là: {lower}")
-            self.raw_result_text.append(f"Xấp xỉ trên của X qua tập thuộc tính B là: {upper}")
+            self.raw_result_text_approx.append(f"Xấp xỉ dưới của X qua tập thuộc tính B là: {lower}")
+            self.raw_result_text_approx.append(f"Xấp xỉ trên của X qua tập thuộc tính B là: {upper}")
             if len(upper) > 0:
                   coeff = len(lower) / len(upper)
-                  self.raw_result_text.append(f"Hệ số xấp xỉ: {coeff:.2f}")
+                  self.raw_result_text_approx.append(f"Hệ số xấp xỉ: {coeff:.2f}")
 
             dependency_result_msg = analyzer.dependency(decision_attribute, selected_B)  # Get dependency result string
-            self.raw_result_text.append(f"\n{dependency_result_msg}")  # Display message
+            self.raw_result_text_dependency.append(f"{dependency_result_msg}")  # Display message
 
             reducts_result = analyzer.reducts(decision_attribute)
             print(reducts_result)
             if reducts_result:  # Display Reducts if they exist
-                self.raw_result_text.append("\nReducts:")
+                
 
                 distributed_result = []
                 single_clause = reducts_result[0]  # Clause đơn
@@ -1280,53 +1439,14 @@ class MainWindow(QWidget):
                 # Kết hợp các thành phần phân bố bằng ∧
                 distributed_laws = " ∨ ".join(distributed_result)
 
-                self.raw_result_text.append(distributed_laws) 
+                self.raw_result_text_reducts.append(distributed_laws) 
 
             else:
-                 self.raw_result_text.append("\nKhông tìm thấy reduct nào.")
+                 self.raw_result_text_reducts.append("Không tìm thấy reduct nào.")
 
 
         except Exception as e:
-            self.raw_result_text.append(f"Lỗi: {e}")
-
-    def load_data_naive_bayes_laplace(self):
-        options = QFileDialog.Options()
-        filepath, _ = QFileDialog.getOpenFileName(self, "Chọn tập dữ liệu", "", "CSV Files (*.csv);;All Files (*)", options=options)
-
-        if filepath:
-            try:
-                self.nb_filepath_display.setText(filepath)
-                self.nb_result_text.clear()
-                self.data = pd.read_csv(filepath) # Store the data
-                if 'Day' in self.data.columns:
-                     self.data = self.data.drop(columns=['Day'])
-                self.label = 'Play'
-
-                form_layout = self.findChild(QFormLayout)
-                for i in reversed(range(form_layout.count())):
-                    form_layout.itemAt(i).widget().setParent(None) 
-
-                self.feature_comboboxes = {}
-                for feature in self.data.columns.drop(self.label):
-                    combobox = QComboBox()
-                    combobox.addItems(self.data[feature].unique().astype(str))
-                    combobox.setStyleSheet("""
-                        QComboBox {
-                            font-size: 12pt;        
-                            height: 35px;          
-                            padding: 3px 10px;      
-                            min-width: 150px; 
-                        }
-                        QComboBox QAbstractItemView {
-                            font-size: 12pt;
-                        }
-                    """)
-                    self.feature_comboboxes[feature] = combobox
-                    form_layout.addRow(QLabel(f"{feature}:", font=QFont("Arial", 12)), combobox) 
-
-
-            except Exception as e:
-                 self.nb_result_text.append(f"Lỗi: {e}")
+            self.raw_result_text_approx.append(f"Lỗi: {e}")
 
     def predict_laplace(self):
         try:
@@ -1350,7 +1470,7 @@ class MainWindow(QWidget):
                 prob_str = f"P(Play={class_value})"
 
                 self.nb_result_text.append(f"Xét Play = {class_value}:")
-                self.nb_result_text.append(f"  {prob_str} = {prob:.6f}")
+                self.nb_result_text.append(f"\n  {prob_str} = {prob:.6f}\n")
 
                 for feature, feature_value in instance.items():
                     if feature != self.label:
@@ -1359,21 +1479,21 @@ class MainWindow(QWidget):
                                 if use_laplace:
                                     conditional_prob = nb_classifier.feature_probs[feature][class_value].get(feature_value, 0)
                                     prob *= conditional_prob
-                                    prob_str += f" * P({feature}={feature_value}|Play={class_value})"
+                                    prob_str += f" * P({feature}={feature_value}|Play={class_value}\n)"
                                     self.nb_result_text.append(
-                                        f"  P({feature}={feature_value}|Play={class_value}) = {conditional_prob:.6f}")
+                                        f"  P({feature}={feature_value}|Play={class_value}) = {conditional_prob:.6f}\n")
 
                                 else: 
                                     prob = 0
                                     self.nb_result_text.append(
-                                        f"Giá trị '{feature_value}' của thuộc tính '{feature}' không có trong dữ liệu huấn luyện.")
+                                        f"Giá trị '{feature_value}' của thuộc tính '{feature}' không có trong dữ liệu huấn luyện.\n")
                                     break 
                             else:  
                                 conditional_prob = nb_classifier.feature_probs[feature][class_value][feature_value]
                                 prob *= conditional_prob
                                 prob_str += f" * P({feature}={feature_value}|Play={class_value})"
                                 self.nb_result_text.append(
-                                    f"  P({feature}={feature_value}|Play={class_value}) = {conditional_prob:.6f}")
+                                    f"  P({feature}={feature_value}|Play={class_value}) = {conditional_prob:.6f}\n")
                         
                 probabilities[class_value] = (prob, prob_str)
                 self.nb_result_text.append(f"  {prob_str} = {prob:.6f}\n")
@@ -1388,32 +1508,10 @@ class MainWindow(QWidget):
         except Exception as e:
             self.nb_result_text.append(f"Lỗi: {e}")
 
-    def load_data_kmeans(self): 
-
-        options = QFileDialog.Options()
-        filepath, _ = QFileDialog.getOpenFileName(self, "Chọn tập dữ liệu", "", "CSV Files (*.csv);;All Files (*)", options=options)
-
-        if filepath:
-            try:
-               self.kmeans_result_text.clear()
-               self.kmeans_data = pd.read_csv(filepath) # Loads numerical data
-               if 'X' in self.kmeans_data.columns: # Remove the unnecessary column 'X' if it's in the dataframe
-                    self.kmeans_data = self.kmeans_data.drop(columns=['X'])
-
-               self.kmeans_data = self.kmeans_data.apply(pd.to_numeric, errors='coerce').dropna()
-               self.kmeans_data = self.kmeans_data.values # Convert to numpy array for more efficient calculation
-               self.kmeans_filepath_display.setText(filepath)
-
-
-
-
-            except Exception as e:
-               self.kmeans_result_text.append(f"Lỗi khi tải dữ liệu: {e}")
-
-
     def run_kmeans(self):
         try:
             self.kmeans_result_text.clear()
+            self.kmeans_cluster_text.clear()
             k = int(self.k_input.text())
 
             kmeans = KMeans(k)
@@ -1425,8 +1523,8 @@ class MainWindow(QWidget):
             cluster_labels = [f"C{i + 1}".rjust(3) for i in range(k)]
 
             # 1. Display partition matrix
-            self.kmeans_result_text.append("Ma trận phân hoạch:")
-            header = "  M\t" + "  \t".join(data_point_labels)
+            self.kmeans_result_text.append("Ma trận phân hoạch U0:")
+            header = "   \t" + "  \t".join(data_point_labels)
             matrix_string = ""
             for j in range(len(cluster_labels)):
                 row = f"{cluster_labels[j]}\t"
@@ -1443,7 +1541,7 @@ class MainWindow(QWidget):
 
             # 3. Calculate Euclidean distances and cluster assignments
             self.kmeans_result_text.append("\nKhoảng cách Euclidean :")
-            header = " "+ "\t  " + "\t\t ".join(cluster_labels) + f" \t\t{'Cụm'.rjust(6)}"
+            header = " "+ "\t  " + "\t ".join(cluster_labels) + f" \t{'Cụm'.rjust(6)}"
             self.kmeans_result_text.append(header)
 
 
@@ -1456,18 +1554,26 @@ class MainWindow(QWidget):
 
                 self.kmeans_result_text.append(f"X{i+1}\t" + "\t".join(formatted_distances) + f"\t{assigned_cluster.rjust(6)}")
 
+            # 4. Display partition matrix U1
+            self.kmeans_result_text.append("\nMa trận phân hoạch U1:")
+            header = "   \t" + "  \t".join(data_point_labels)
+            matrix_string = ""
+            for j in range(len(cluster_labels)):
+                row = f"{cluster_labels[j]}\t"
+                for i in range(len(data_point_labels)):
+                    row += str(int(U[i][j])).rjust(3) + "\t"  # Pad matrix elements
+                matrix_string += row + "\n"
+            self.kmeans_result_text.append(f"{header}\n{matrix_string}")
 
 
-
-            # 4. Display cluster assignments
-            self.kmeans_result_text.append("\nKết quả phân cụm:")
+            # 5. Display cluster assignments
             clusters = [[] for _ in range(k)]  # Initialize clusters for final assignments
             for i, point in enumerate(self.kmeans_data):  # Cluster based on min distance
                 min_distance_index = np.argmin([np.linalg.norm(point - centroid) for centroid in centroids])  # Assign based on min distance
                 clusters[min_distance_index].append(data_point_labels[i])
 
             for i, cluster in enumerate(clusters):  # Display based on final assignments
-                self.kmeans_result_text.append(f"Cụm {i + 1}: {cluster}")
+                self.kmeans_cluster_text.append(f"Cụm {i + 1}: {cluster}")
 
 
         except Exception as e:
@@ -1477,26 +1583,15 @@ class MainWindow(QWidget):
     def display_content(self, index):
         self.stacked_widget.setCurrentIndex(index)
 
-    def load_data_decision_tree(self):
-        options = QFileDialog.Options()
-        filepath, _ = QFileDialog.getOpenFileName(self, "Chọn tập dữ liệu", "", "CSV Files (*.csv);;All Files (*)", options=options)
-        if filepath:
-            try:
-                self.dt_filepath_display.setText(filepath)  # Update filepath display
-                self.dt_data = pd.read_csv(filepath) #Load and store data
-                if 'Day' in self.dt_data.columns:
-                    self.dt_data = self.dt_data.drop(columns=['Day'])
-            except Exception as e:
-                self.id3_result_text.append(f"Lỗi: {e}")
-    
     def calculate_decision_tree(self):
         try:
-            self.id3_result_text.clear()
+            self.id3_result_text_nodes.clear()
+            self.id3_result_text_rules.clear()
             criterion = self.criterion_combobox.currentData()
             label = "Play"  # Or determine dynamically
 
             if not hasattr(self, 'dt_data'):
-                self.id3_result_text.append("Vui lòng tải dữ liệu trước.")
+                self.id3_result_text_nodes.append("Vui lòng tải dữ liệu trước.")
                 return
 
             if 'Day' in self.dt_data.columns:
@@ -1507,45 +1602,45 @@ class MainWindow(QWidget):
             dot = Digraph()
 
             decision_tree_gen = DecisionTreeGenerator(label, criterion)
-            decision_tree_gen.result_text = self.id3_result_text
+            decision_tree_gen.result_text = self.id3_result_text_nodes
 
             features = self.dt_data.columns.drop(label)  # Define features here, outside the if/else blocks
 
             # Initial calculations at the root node
             if criterion == "gini":
-                self.id3_result_text.append("Xét nút gốc:")
+                self.id3_result_text_nodes.append("Xét nút gốc:")
                 gini_values = {feature: decision_tree_gen.calc_gini_for_feature(self.dt_data, feature, class_list) for feature in features}
 
                 # Check if there are features available to split on
                 if gini_values:
                      for feature, gini in gini_values.items():
-                         self.id3_result_text.append(f"  Gini({feature}) = {gini:.4f}")
+                         self.id3_result_text_nodes.append(f"  Gini({feature}) = {gini:.4f}")
                      best_feature = decision_tree_gen.select_best_feature(self.dt_data, class_list, features)
-                     self.id3_result_text.append(f"=> Chọn {best_feature} làm thuộc tính phân nhánh\n")
+                     self.id3_result_text_nodes.append(f"=> Chọn {best_feature} làm thuộc tính phân nhánh\n")
                 else:  # No features to split, create leaf node based on majority class.
                       majority_class = self.dt_data[self.label].mode().iloc[0] if not self.dt_data.empty else None
                       if majority_class:
-                        self.id3_result_text.append(f"Tạo nút lá: {majority_class}")
+                        self.id3_result_text_nodes.append(f"Tạo nút lá: {majority_class}")
 
                       return  # Stop further processing
 
 
             elif criterion == "info_gain":  # Calculate info gain for each feature if criterion is info_gain
-                 self.id3_result_text.append("Xét nút gốc:")
+                 self.id3_result_text_nodes.append("Xét nút gốc:")
 
 
                  info_gain_values = {feature: decision_tree_gen.calc_info_gain_for_feature(self.dt_data, feature, class_list) for feature in features}
                  if info_gain_values: # Ensure that features exist for this calculation at the root node
                       for feature, info_gain in info_gain_values.items():
-                           self.id3_result_text.append(f"  InfoGain({feature}) = {info_gain:.4f}")
+                           self.id3_result_text_nodes.append(f"  InfoGain({feature}) = {info_gain:.4f}")
 
 
                       best_feature = decision_tree_gen.select_best_feature(self.dt_data, class_list, features)
-                      self.id3_result_text.append(f"=> Chọn {best_feature} làm thuộc tính phân nhánh\n")
+                      self.id3_result_text_nodes.append(f"=> Chọn {best_feature} làm thuộc tính phân nhánh\n")
                  else:
                      majority_class = self.dt_data[self.label].mode().iloc[0] if not self.dt_data.empty else None  # Get majority class in case there are no more features but more than one class
                      if majority_class:
-                         self.id3_result_text.append(f"Tạo nút lá: {majority_class}")
+                         self.id3_result_text_nodes.append(f"Tạo nút lá: {majority_class}")
 
 
                      return # No features to split on
@@ -1553,13 +1648,70 @@ class MainWindow(QWidget):
             decision_tree_gen.make_tree(dot, 'root', 'root', self.dt_data, class_list)
 
             dot.render('decision_tree', view=True)
-            self.id3_result_text.append("\nCác luật được tạo:")
-
+           
             dot_rules = Digraph()
+            decision_tree_gen.result_text = self.id3_result_text_rules
             decision_tree_gen.generate_rules(dot_rules, 'root', 'root', self.dt_data, class_list)
 
         except Exception as e:
-            self.id3_result_text.append(f"Lỗi: {e}")
+            self.id3_result_text_nodes.append(f"Lỗi: {e}")
+
+    def load_data_preprocessing(self):
+        self.load_data('preprocessing')
+
+    def load_data_apriori(self):
+        self.load_data('apriori')
+
+    def load_data_raw(self):
+        self.load_data('raw')
+
+    def load_data_naive_bayes_laplace(self):
+        self.load_data('naive_bayes')
+
+    def load_data_kmeans(self):
+        self.load_data('kmeans')
+
+    def load_data_decision_tree(self):
+        self.load_data('decision_tree')
+
+    def calculate_correlation(self):
+        try:
+            if not hasattr(self, 'preprocessing_data'):
+                self.preprocessing_result_text.append("Vui lòng tải dữ liệu trước.")
+                return
+
+            if self.preprocessing_data.shape[1] < 3:
+                self.preprocessing_result_text.append("Tập dữ liệu phải có ít nhất 3 cột.")
+                return
+
+            x = self.preprocessing_data.iloc[:, 1]
+            y = self.preprocessing_data.iloc[:, 2]
+
+            r = np.corrcoef(x, y)[0, 1]
+
+            self.preprocessing_result_text.clear()
+            self.preprocessing_result_text.append(f"Hệ số tương quan r: {r:.4f}")
+
+            if r > 0:
+                self.preprocessing_result_text.append("X và Y tương quan thuận với nhau.")
+            elif r == 0:
+                self.preprocessing_result_text.append("X và Y không tương quan với nhau (độc lập).")
+            else:
+                self.preprocessing_result_text.append("X và Y tương quan nghịch với nhau, loại trừ lẫn nhau.")
+
+            if abs(r) < 0.2:
+                self.preprocessing_result_text.append("Mối tương quan: Quá thấp.")
+            elif abs(r) < 0.4:
+                self.preprocessing_result_text.append("Mối tương quan: Thấp.")
+            elif abs(r) < 0.6:
+                self.preprocessing_result_text.append("Mối tương quan: Trung bình.")
+            elif abs(r) < 0.8:
+                self.preprocessing_result_text.append("Mối tương quan: Cao.")
+            else:
+                self.preprocessing_result_text.append("Mối tương quan: Rất cao.")
+
+        except Exception as e:
+            self.preprocessing_result_text.append(f"Lỗi: {e}")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
