@@ -438,6 +438,8 @@ class NaiveBayesLaplace:
 class RoughSetAnalyzer:
     def __init__(self, data):
         self.data = data
+        self.label = data.columns[-1]  # Add label attribute
+        self.result_text = []  # Initialize result_text as an empty list
 
     def approximate(self, X, B):
         X_indices = self.data[self.data['O'].isin(X)].index
@@ -481,16 +483,12 @@ class RoughSetAnalyzer:
         k = sum(len(approx) for approx in lower_approximations) / len(U) if len(U) > 0 else 0
 
         # Construct the dependency message
-        dependency_text = f"Phụ thuộc của thuộc tính {C} vào B: "
-
         if k == 1:
-            dependency_text += "Phụ thuộc hoàn toàn (k = 1)"
+            return "Phụ thuộc hoàn toàn (k = 1)"
         elif 0 < k < 1:
-            dependency_text += f"Phụ thuộc một phần (k = {k:.2f})"
+            return f"Phụ thuộc một phần (k = {k:.2f})"
         else:
-            dependency_text += "Không phụ thuộc (k = 0)"
-
-        return dependency_text
+            return "Không phụ thuộc (k = 0)"
 
 
     def discernibility_matrix(self, decision_attr):  # Create method for computing discernibility matrix
@@ -515,25 +513,18 @@ class RoughSetAnalyzer:
 
     def reducts(self, decision_attr):
         matrix = self.discernibility_matrix(decision_attr)  # Compute matrix
-        # pprint(matrix)  # Print the matrix to debug
-        
-        # Calculate discernibility function
         discernibility_function = set()  # Use a set to ensure unique clauses
-        # pprint(discernibility_function)  # Print empty set initially
         
         for row in matrix:  # Loop through the rows of the discernibility matrix
             for item in row:  # Loop through items in the rows
                 if item:
-                    discernibility_function.add(tuple(sorted(item)))  # Sort for easier comparison
+                    discernibility_function.add(frozenset(item))  # Use frozenset for immutability and uniqueness
 
-        # pprint(discernibility_function)  # Print discernibility function after calculation
-        
         if not discernibility_function:  # Handle cases with no reducts
             return []
 
         # Simplify discernibility function (using absorption law)
         simplified_function = list(discernibility_function)  # Make a copy
-        pprint(simplified_function)  # Print initial simplified function
 
         simplified = True  # Start with True to enter the loop
         while simplified:
@@ -542,22 +533,137 @@ class RoughSetAnalyzer:
             for clause1 in simplified_function:
                 absorbed = False
                 for clause2 in simplified_function:
-                    if clause1 != clause2 and set(clause2).issubset(clause1):  # Apply absorption if subset
+                    if clause1 != clause2 and clause2.issubset(clause1): 
                         print(f'{clause1} bị hấp thụ')
                         absorbed = True  # Clause1 is absorbed so no need to add it to the output
                         break  # Clause1 absorbed by clause 2, exit the inner loop
                 if not absorbed:
                     new_simplified.append(clause1)  # If clause1 is not absorbed, it is part of the reduct
             
-            # pprint(new_simplified)  # Print the newly simplified function at each iteration
-
             if set(simplified_function) != set(new_simplified):  # If changes made, update function and continue
                 simplified_function = new_simplified  # Update the simplified_function
                 simplified = True  # Changes made, so continue the loop
 
-        # pprint(new_simplified)  # Final simplified function
-        return new_simplified  # Return the final simplified function
+        # Sort the final simplified function to ensure consistent results
+        sorted_simplified_function = sorted([sorted(list(clause)) for clause in simplified_function])
 
+        # Ensure the output is always the same by sorting the final list of lists
+        sorted_simplified_function.sort(key=lambda x: (len(x), x))
+
+        return sorted_simplified_function  # Return the final simplified function as sorted list of lists
+
+    def generate_rules(self, dot, parent_name, parent_node, train_data, class_list, current_rule=None, rule_index=1):
+        if train_data.empty:
+            return rule_index
+
+        if len(train_data[self.label].unique()) == 1:
+            leaf_class = train_data[self.label].iloc[0]
+            if current_rule:
+                self.result_text.append(f"{current_rule} --> {self.label}={leaf_class}\n")
+                rule_index += 1
+            return rule_index
+
+        if len(train_data.columns) == 1:
+            if current_rule:
+                majority_class = train_data[self.label].mode().iloc[0]
+                self.result_text.append(f"{current_rule} --> {self.label}={majority_class}\n")
+                rule_index += 1
+            return rule_index
+
+        features = train_data.columns.drop([self.label, train_data.columns[0]])  # Exclude the first column and the label
+        best_feature = self.select_best_feature(train_data, class_list, features)
+
+        if best_feature:
+            for feature_value in train_data[best_feature].unique():
+                feature_value_data = train_data[train_data[best_feature] == feature_value]
+                node_name = f"{parent_node}_{feature_value}"
+
+                new_rule = f"{best_feature}={feature_value}"
+                if current_rule:
+                    new_rule = f"{current_rule} và {new_rule}"
+
+                rule_index = self.generate_rules(dot, node_name, node_name, feature_value_data.drop(columns=best_feature), class_list, new_rule, rule_index)
+
+        elif current_rule:
+            majority_class = train_data[self.label].mode().iloc[0]
+            self.result_text.append(f"{current_rule} --> {self.label}={majority_class}\n")
+            rule_index += 1
+
+        return rule_index
+
+    def calculate_raw(self):
+        try:
+            self.raw_result_text_approx.clear()
+            self.raw_result_text_dependency.clear()
+            self.raw_result_text_reducts.clear()
+            self.raw_result_text_rules.clear()
+
+            selected_X = [item.text() for item in self.X_list.selectedItems()]
+            selected_B = [item.text() for item in self.B_list.selectedItems()]
+            selected_B1 = [item.text() for item in self.B1_list.selectedItems()]
+
+            if not selected_X or not selected_B or not selected_B1:
+                self.raw_result_text_approx.append("Vui lòng chọn X, B và B1.")
+                return
+
+            if len(self.raw_data.columns) > 0:
+                decision_attribute = self.raw_data.columns[-1]
+            else:
+                self.raw_result_text_approx.append("Tập dữ liệu trống hoặc không hợp lệ.")
+                return
+
+            analyzer = RoughSetAnalyzer(self.raw_data)
+            analyzer.result_text = []
+
+            lower, upper = analyzer.approximate(selected_X, selected_B)
+            self.raw_result_text_approx.append(f"Xấp xỉ dưới của X qua tập thuộc tính B là: {lower}")
+            self.raw_result_text_approx.append(f"Xấp xỉ trên của X qua tập thuộc tính B là: {upper}")
+            if len(upper) > 0:
+                coeff = len(lower) / len(upper)
+                self.raw_result_text_approx.append(f"Hệ số xấp xỉ: {coeff:.2f}")
+
+            dependency_result_msg = analyzer.dependency(decision_attribute, selected_B1)
+            self.raw_result_text_dependency.append(f"{dependency_result_msg}")
+
+            reducts_result = analyzer.reducts(decision_attribute)
+            if reducts_result:
+                distributed_result = []
+                single_clause = reducts_result[0]
+                multi_clause = reducts_result[1]
+
+                for item in multi_clause:
+                    distributed_result.append(f"({single_clause[0]} ∧ {item})")
+
+                distributed_laws = " ∨ ".join(distributed_result)
+                self.raw_result_text_reducts.append(distributed_laws)
+            else:
+                self.raw_result_text_reducts.append("Không tìm thấy reduct nào.")
+
+            dot = Digraph()
+            class_list = self.raw_data[decision_attribute].unique()
+            analyzer.generate_rules(dot, 'root', 'root', self.raw_data, class_list)
+
+            # Display the rules in the raw_result_text_rules QTextEdit
+            self.raw_result_text_rules.append("\n".join(analyzer.result_text))
+
+        except Exception as e:
+            self.raw_result_text_approx.append(f"Lỗi: {e}")
+
+    def select_best_feature(self, data, class_list, features):
+        # Implement a simple feature selection method, e.g., based on Gini index
+        def calc_gini_for_feature(data, feature, class_list):
+            gini_feature = 0
+            total_instances = len(data)
+            for value in data[feature].unique():
+                subset = data[data[feature] == value]
+                gini_subset = 1
+                for c in class_list:
+                    gini_subset -= (len(subset[subset[self.label] == c]) / len(subset))**2 if len(subset) > 0 else 0
+                gini_feature += (len(subset) / total_instances) * gini_subset
+            return gini_feature
+
+        features_gini = {feature: calc_gini_for_feature(data, feature, class_list) for feature in features}
+        return min(features_gini, key=features_gini.get) if features_gini else None
 
 class MainWindow(QWidget):
     def __init__(self):
@@ -1058,10 +1164,19 @@ class MainWindow(QWidget):
                         font-size: 13pt;
                     }
                 """)
+                self.raw_result_text_rules = QTextEdit()  # New QTextEdit for rules with 100% accuracy
+                self.raw_result_text_rules.setReadOnly(True)
+                self.raw_result_text_rules.setStyleSheet("""
+                    QTextEdit {
+                        font-size: 13pt;
+                    }
+                """)
                 self.X_list = QListWidget()
                 self.X_list.setSelectionMode(QAbstractItemView.ExtendedSelection)  # Allow multiple selections
                 self.B_list = QListWidget()
                 self.B_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+                self.B1_list = QListWidget()
+                self.B1_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
                 self.C_combobox = QComboBox()
 
                 self.raw_calculate_button = QPushButton("Tính toán") # button to trigger
@@ -1112,6 +1227,12 @@ class MainWindow(QWidget):
                 right_layout.addWidget(self.B_list, stretch=1)  # Stretch B_list vertically
                 selection_layout.addLayout(right_layout)
 
+                # Right side (B1 selection)
+                right_layout_B1 = QVBoxLayout()
+                right_layout_B1.addWidget(QLabel("Chọn tập B1:", font=QFont("Arial", 12)))
+                right_layout_B1.addWidget(self.B1_list, stretch=1)  # Stretch B1_list vertically
+                selection_layout.addLayout(right_layout_B1)
+
                 raw_layout.addLayout(selection_layout)
 
 
@@ -1123,14 +1244,17 @@ class MainWindow(QWidget):
 
                 raw_layout.addWidget(self.raw_calculate_button)  # Trigger button
 
-                raw_layout.addWidget(QLabel("Xấp xỉ dưới, xấp xỉ trên, hệ số xấp xỉ:", font=QFont("Arial", 12)))
+                raw_layout.addWidget(QLabel("Xấp xỉ dưới, xấp xỉ trên, hệ số xấp xỉ của X qua tập thuộc tính B:", font=QFont("Arial", 12)))
                 raw_layout.addWidget(self.raw_result_text_approx, stretch=1) # Set result area to stretch
 
-                raw_layout.addWidget(QLabel("Phụ thuộc thuộc tính:", font=QFont("Arial", 12)))
+                raw_layout.addWidget(QLabel("Khảo sát sự phụ thuộc thuộc tính giữa thuộc tính quyết định và tập thuộc tính B1:", font=QFont("Arial", 12)))
                 raw_layout.addWidget(self.raw_result_text_dependency)  # No stretch needed
 
                 raw_layout.addWidget(QLabel("Rút gọn của hệ quyết định:", font=QFont("Arial", 12)))
                 raw_layout.addWidget(self.raw_result_text_reducts)  # No stretch needed
+
+                raw_layout.addWidget(QLabel("Một số luật có độ chính xác 100%:", font=QFont("Arial", 12)))  # Label for new section
+                raw_layout.addWidget(self.raw_result_text_rules, stretch=1)  # Add new QTextEdit to layout
 
                 tab.setLayout(raw_layout)
 
@@ -1263,13 +1387,15 @@ class MainWindow(QWidget):
                     if 'Day' in self.raw_data.columns:
                         self.raw_data = self.raw_data.drop(columns=['Day'])
                     self.X_list.clear()
-                    self.X_list.addItems(self.raw_data["O"].unique().astype(str))
+                    self.X_list.addItems(self.raw_data.iloc[:, 0].unique().astype(str))
                     self.B_list.clear()
+                    self.B1_list.clear()
                     if len(self.raw_data.columns) > 0:
                         decision_attribute = self.raw_data.columns[-1]
                         self.decision_attr_display.setText(decision_attribute)
-                        columns_to_add = self.raw_data.columns.drop(["O", decision_attribute]).tolist()
+                        columns_to_add = self.raw_data.columns.drop(self.raw_data.columns[0]).drop(decision_attribute).tolist()
                         self.B_list.addItems(columns_to_add)
+                        self.B1_list.addItems(columns_to_add)
                 elif tab_name == 'naive_bayes':
                     self.nb_filepath_display.setText(filepath)
                     self.nb_result_text.clear()
@@ -1396,12 +1522,14 @@ class MainWindow(QWidget):
             self.raw_result_text_approx.clear()
             self.raw_result_text_dependency.clear()
             self.raw_result_text_reducts.clear()
+            self.raw_result_text_rules.clear()
 
             selected_X = [item.text() for item in self.X_list.selectedItems()]
             selected_B = [item.text() for item in self.B_list.selectedItems()]
+            selected_B1 = [item.text() for item in self.B1_list.selectedItems()]
 
-            if not selected_X or not selected_B :  # Check if X and B are selected
-                self.raw_result_text_approx.append("Vui lòng chọn X và B.")
+            if not selected_X or not selected_B or not selected_B1:  # Check if X, B, and B1 are selected
+                self.raw_result_text_approx.append("Vui lòng chọn X, B và B1.")
                 return
 
             if len(self.raw_data.columns) > 0:
@@ -1410,40 +1538,45 @@ class MainWindow(QWidget):
                 self.raw_result_text_approx.append("Tập dữ liệu trống hoặc không hợp lệ.")
                 return
 
-
             analyzer = RoughSetAnalyzer(self.raw_data)
+            analyzer.result_text = []
 
             lower, upper = analyzer.approximate(selected_X, selected_B)
             self.raw_result_text_approx.append(f"Xấp xỉ dưới của X qua tập thuộc tính B là: {lower}")
             self.raw_result_text_approx.append(f"Xấp xỉ trên của X qua tập thuộc tính B là: {upper}")
             if len(upper) > 0:
-                  coeff = len(lower) / len(upper)
-                  self.raw_result_text_approx.append(f"Hệ số xấp xỉ: {coeff:.2f}")
+                coeff = len(lower) / len(upper)
+                self.raw_result_text_approx.append(f"Hệ số xấp xỉ: {coeff:.2f}")
 
-            dependency_result_msg = analyzer.dependency(decision_attribute, selected_B)  # Get dependency result string
+            dependency_result_msg = analyzer.dependency(decision_attribute, selected_B1)  # Get dependency result string using B1
             self.raw_result_text_dependency.append(f"{dependency_result_msg}")  # Display message
 
             reducts_result = analyzer.reducts(decision_attribute)
             print(reducts_result)
             if reducts_result:  # Display Reducts if they exist
-                
-
                 distributed_result = []
                 single_clause = reducts_result[0]  # Clause đơn
                 multi_clause = reducts_result[1]  # Clause chứa nhiều phần tử
 
                 # Tạo các thành phần phân bố
                 for item in multi_clause:
-                    distributed_result.append(f"({single_clause[0]} ∧ {item})")
+                    distributed_result.append(f"({single_clause[0]} , {item})")
 
                 # Kết hợp các thành phần phân bố bằng ∧
-                distributed_laws = " ∨ ".join(distributed_result)
+                distributed_laws = " và ".join(distributed_result)
 
                 self.raw_result_text_reducts.append(distributed_laws) 
 
             else:
-                 self.raw_result_text_reducts.append("Không tìm thấy reduct nào.")
+                self.raw_result_text_reducts.append("Không tìm thấy reduct nào.")
 
+            # Generate rules with 100% accuracy
+            dot = Digraph()
+            class_list = self.raw_data[decision_attribute].unique()
+            analyzer.generate_rules(dot, 'root', 'root', self.raw_data, class_list)
+
+            # Display the rules in the raw_result_text_rules QTextEdit
+            self.raw_result_text_rules.append("\n".join(analyzer.result_text))
 
         except Exception as e:
             self.raw_result_text_approx.append(f"Lỗi: {e}")
