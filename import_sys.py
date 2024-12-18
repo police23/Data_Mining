@@ -665,6 +665,46 @@ class RoughSetAnalyzer:
         features_gini = {feature: calc_gini_for_feature(data, feature, class_list) for feature in features}
         return min(features_gini, key=features_gini.get) if features_gini else None
 
+class Kohonen:
+    def __init__(self, learning_rate, iterations, neighborhood_radius=0):
+        self.learning_rate = learning_rate
+        self.iterations = iterations
+        self.neighborhood_radius = neighborhood_radius
+        self.weights = np.array([
+            [19, 111, 21.5],
+            [6.5, 88, 90.5],
+            [8.5, 18, 65]
+        ])
+
+    def train(self, data, result_text):
+        result_text.append("Khởi tạo giá trị của các vector trọng số:")
+        for i, weight in enumerate(self.weights):
+            result_text.append(f"w{i+1}: {[f'{w:.2f}'.rstrip('0').rstrip('.') for w in weight]}")
+        
+        for iteration in range(self.iterations):
+            result_text.append(f"\n*Lần lặp thứ {iteration + 1}:")
+            for i, sample in enumerate(data):
+                distances = np.linalg.norm(self.weights - sample, axis=1)
+                winner_index = np.argmin(distances)
+                result_text.append(f" \nXét vector {i + 1} (Tranh {i + 1}) x{i + 1}\n")
+                sorted_distances = sorted(enumerate(distances), key=lambda x: x[1])
+                for j, distance in sorted_distances:
+                    if j == winner_index:
+                        result_text.append(f" Khoảng cách từ x{i + 1} đến w{j + 1}: {distance:.2f} -> ngắn nhất")
+                    else:
+                        result_text.append(f" Khoảng cách từ x{i + 1} đến w{j + 1}: {distance:.2f}")
+                for j in range(len(self.weights)):
+                    if np.linalg.norm(j - winner_index) <= self.neighborhood_radius:
+                        self.weights[j] += self.learning_rate * (sample - self.weights[j])
+                        self.weights[j] = np.round(self.weights[j], 2)  # Round weights to 2 decimal places
+                        result_text.append(f"-> Cập nhật trọng số w{j + 1}: {[f'{w:.2f}'.rstrip('0').rstrip('.') for w in self.weights[j]]}")
+            self.learning_rate /= 2
+            result_text.append(f"\n**Giảm tốc độ học: alpha = {self.learning_rate}")
+
+    def predict(self, sample):
+        distances = np.linalg.norm(self.weights - sample, axis=1)
+        return np.argmin(distances)
+
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
@@ -713,6 +753,8 @@ class MainWindow(QWidget):
             ("Tập thô", "raw_data.png"),
             ("K-Means", "cluster.png"),
         ]
+
+        items.append(("Kohonen", "kohonen.png"))  # Add Kohonen tab
 
         for i, (text, icon_file) in enumerate(items):
             tab = QWidget()
@@ -857,13 +899,13 @@ class MainWindow(QWidget):
 
                 self.frequent_itemsets_text = QTextEdit() # Create QTextEdits *before* adding to layout
                 self.frequent_itemsets_text.setReadOnly(True)
-                self.frequent_itemsets_text.setFixedHeight(60)  # Set fixed height for two lines
+                self.frequent_itemsets_text.setFixedHeight(90)  # Set fixed height for two lines
                 self.frequent_itemsets_text.setStyleSheet("font-size: 13pt;")
 
 
                 self.maximal_itemsets_text = QTextEdit()
                 self.maximal_itemsets_text.setReadOnly(True)
-                self.maximal_itemsets_text.setFixedHeight(60)  # Set fixed height for two lines
+                self.maximal_itemsets_text.setFixedHeight(90)  # Set fixed height for two lines
                 self.maximal_itemsets_text.setStyleSheet("font-size: 13pt;")
 
 
@@ -901,7 +943,7 @@ class MainWindow(QWidget):
 
                 apriori_layout.addWidget(QLabel("Tập phổ biến tối đại:", font=QFont("Arial", 12)))
                 apriori_layout.addWidget(self.maximal_itemsets_text)  # No stretch needed
-                apriori_layout.addWidget(QLabel("Luật kết hợp:", font=QFont("Arial", 12)))
+                apriori_layout.addWidget(QLabel("Các luật kết hợp:", font=QFont("Arial", 12)))
                 apriori_layout.addWidget(self.association_rules_text, stretch=1)
                 tab.setLayout(apriori_layout)
 
@@ -1270,8 +1312,9 @@ class MainWindow(QWidget):
                         font-weight: bold;       /* Bold text */
                         border: none;            /* No border */
                         padding: 8px 16px;      /* Padding around text */
-                        border-radius: 10px;    /* Rounded corners */
+                        border-radius: 10px;
                         font-size : 20px;      /* Rounded corners */
+                       
                     }
                     QPushButton:hover {
                         background-color: #1B5E20; /* Darker green on hover */
@@ -1353,6 +1396,102 @@ class MainWindow(QWidget):
                 self.kmeans_load_button.clicked.connect(lambda: self.load_data('kmeans'))
                 self.kmeans_calculate_button.clicked.connect(self.run_kmeans)
            
+            if i == len(items) - 1:  # Kohonen Tab
+                self.kohonen_load_button = QPushButton("Upload file .CSV")
+                self.kohonen_load_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: #2E7D32; /* Green background */
+                        color: white;            /* White text */
+                        font-weight: bold;       /* Bold text */
+                        border: none;            /* No border */
+                        padding: 8px 16px;      /* Padding around text */
+                        border-radius: 10px;
+                        font-size : 20px;      /* Rounded corners */
+                    }
+                    QPushButton:hover {
+                        background-color: #1B5E20; /* Darker green on hover */
+                    }
+                    QPushButton:pressed {
+                        background-color: #4CAF50; /* Brighter green when pressed */
+                    }
+                """)
+                self.kohonen_load_button.clicked.connect(lambda: self.load_data('kohonen'))
+
+                self.kohonen_filepath_display = QLineEdit()
+                self.kohonen_filepath_display.setReadOnly(True)
+                self.kohonen_filepath_display.setStyleSheet("font-size: 12pt;")
+
+                self.learning_rate_input = QDoubleSpinBox()
+                self.learning_rate_input.setRange(0.0, 1.0)
+                self.learning_rate_input.setSingleStep(0.01)
+                self.learning_rate_input.setStyleSheet("font-size: 12pt; height: 30px;")
+
+                self.iterations_input = QSpinBox()
+                self.iterations_input.setRange(1, 1000)
+                self.iterations_input.setStyleSheet("font-size: 12pt; height: 30px;")
+
+                self.neighborhood_radius_input = QSpinBox()
+                self.neighborhood_radius_input.setRange(0, 10)
+                self.neighborhood_radius_input.setStyleSheet("font-size: 12pt; height: 30px;")
+
+                self.kohonen_calculate_button = QPushButton("Tính toán")
+                self.kohonen_calculate_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: #2E7D32; /* Green background */
+                        color: white;            /* White text */
+                        font-weight: bold;       /* Bold text */
+                        border: none;            /* No border */
+                        padding: 8px 16px;      /* Padding around text */
+                        border-radius: 10px;
+                        font-size : 20px;      /* Rounded corners */
+                    }
+                    QPushButton:hover {
+                        background-color: #1B5E20; /* Darker green on hover */
+                    }
+                    QPushButton:pressed {
+                        background-color: #4CAF50; /* Brighter green when pressed */
+                    }
+                """)
+                self.kohonen_calculate_button.clicked.connect(self.run_kohonen)
+
+                self.kohonen_result_text = QTextEdit()
+                self.kohonen_result_text.setReadOnly(True)
+                self.kohonen_result_text.setStyleSheet("font-size: 13pt;")
+
+                self.kohonen_cluster_text = QTextEdit()
+                self.kohonen_cluster_text.setReadOnly(True)
+                self.kohonen_cluster_text.setFixedHeight(110)  # Set fixed height for three lines
+                self.kohonen_cluster_text.setStyleSheet("font-size: 13pt;")
+
+                kohonen_layout = QVBoxLayout()
+                kohonen_layout.addWidget(QLabel("Tải tập dữ liệu:", font=QFont("Arial", 12)))
+                kohonen_layout.addWidget(self.kohonen_load_button)
+                kohonen_layout.addWidget(self.kohonen_filepath_display)
+
+                input_layout = QHBoxLayout()
+                learning_rate_layout = QVBoxLayout()
+                learning_rate_layout.addWidget(QLabel("Tốc độ học:", font=QFont("Arial", 12)))
+                learning_rate_layout.addWidget(self.learning_rate_input)
+                input_layout.addLayout(learning_rate_layout)
+
+                iterations_layout = QVBoxLayout()
+                iterations_layout.addWidget(QLabel("Số lần lặp:", font=QFont("Arial", 12)))
+                iterations_layout.addWidget(self.iterations_input)
+                input_layout.addLayout(iterations_layout)
+
+                neighborhood_radius_layout = QVBoxLayout()
+                neighborhood_radius_layout.addWidget(QLabel("Bán kính vùng lân cận:", font=QFont("Arial", 12)))
+                neighborhood_radius_layout.addWidget(self.neighborhood_radius_input)
+                input_layout.addLayout(neighborhood_radius_layout)
+
+                kohonen_layout.addLayout(input_layout)
+                kohonen_layout.addWidget(self.kohonen_calculate_button)
+                kohonen_layout.addWidget(QLabel("Kết quả:", font=QFont("Arial", 12)))
+                kohonen_layout.addWidget(self.kohonen_result_text, stretch=1)
+                kohonen_layout.addWidget(QLabel("Ảnh thuộc cụm:", font=QFont("Arial", 12)))
+                kohonen_layout.addWidget(self.kohonen_cluster_text, stretch=1)
+
+                tab.setLayout(kohonen_layout)
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0) #Remove margins on main layout if any
@@ -1437,6 +1576,9 @@ class MainWindow(QWidget):
                     self.dt_data = pd.read_csv(filepath)
                     if 'Day' in self.dt_data.columns:
                         self.dt_data = self.dt_data.drop(columns=['Day'])
+                elif tab_name == 'kohonen':
+                    self.kohonen_filepath_display.setText(filepath)
+                    self.kohonen_data = pd.read_csv(filepath).iloc[:, 1:].values
             except Exception as e:
                 if tab_name == 'preprocessing':
                     self.preprocessing_result_text.append(f"Lỗi khi tải dữ liệu: {e}")
@@ -1450,6 +1592,8 @@ class MainWindow(QWidget):
                     self.kmeans_result_text.append(f"Lỗi khi tải dữ liệu: {e}")
                 elif tab_name == 'decision_tree':
                     self.id3_result_text.append(f"Lỗi: {e}")
+                elif tab_name == 'kohonen':
+                    self.kohonen_result_text.append(f"Lỗi: {e}")
 
     def run_apriori(self):
         try:
@@ -1564,7 +1708,6 @@ class MainWindow(QWidget):
 
                 # Kết hợp các thành phần phân bố bằng ∧
                 distributed_laws = " và ".join(distributed_result)
-
                 self.raw_result_text_reducts.append(distributed_laws) 
 
             else:
@@ -1619,8 +1762,7 @@ class MainWindow(QWidget):
                                 else: 
                                     prob = 0
                                     self.nb_result_text.append(
-                                        f"Giá trị '{feature_value}' của thuộc tính '{feature}' không có trong dữ liệu huấn luyện.\n")
-                                    break 
+                                        f"  P({feature}={feature_value}|Play={class_value}) = 0.000000\n")         
                             else:  
                                 conditional_prob = nb_classifier.feature_probs[feature][class_value][feature_value]
                                 prob *= conditional_prob
@@ -1845,6 +1987,32 @@ class MainWindow(QWidget):
 
         except Exception as e:
             self.preprocessing_result_text.append(f"Lỗi: {e}")
+
+    def run_kohonen(self):
+        try:
+            self.kohonen_result_text.clear()
+            self.kohonen_cluster_text.clear()
+            learning_rate = self.learning_rate_input.value()
+            iterations = self.iterations_input.value()
+            neighborhood_radius = self.neighborhood_radius_input.value()
+
+            kohonen = Kohonen(learning_rate, iterations, neighborhood_radius)
+            kohonen.train(self.kohonen_data, self.kohonen_result_text)
+
+            self.kohonen_result_text.append("\nTrọng số sau các lần lặp:")
+            for i, weight in enumerate(kohonen.weights):
+                self.kohonen_result_text.append(f"w{i+1}: {[f'{w:.2f}'.rstrip('0').rstrip('.') for w in weight]}")
+
+            clusters = {1: [], 2: [], 3: []}
+            for i, sample in enumerate(self.kohonen_data):
+                cluster = kohonen.predict(sample) + 1
+                clusters[cluster].append(f"Tranh {i + 1}")
+
+            for cluster, images in clusters.items():
+                self.kohonen_cluster_text.append(f"Cụm {cluster}: {', '.join(images)}")
+
+        except Exception as e:
+            self.kohonen_result_text.append(f"Lỗi: {e}")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
