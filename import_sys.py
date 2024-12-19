@@ -686,13 +686,9 @@ class Kohonen:
             for i, sample in enumerate(data):
                 distances = np.linalg.norm(self.weights - sample, axis=1)
                 winner_index = np.argmin(distances)
-                result_text.append(f" \nXét vector {i + 1} (Tranh {i + 1}) x{i + 1}\n")
-                sorted_distances = sorted(enumerate(distances), key=lambda x: x[1])
-                for j, distance in sorted_distances:
-                    if j == winner_index:
-                        result_text.append(f" Khoảng cách từ x{i + 1} đến w{j + 1}: {distance:.2f} -> ngắn nhất")
-                    else:
-                        result_text.append(f" Khoảng cách từ x{i + 1} đến w{j + 1}: {distance:.2f}")
+                result_text.append(f" \nXét vector {i + 1} (Tranh {i + 1}) x{i + 1}")
+                distances_str = ", ".join([f"{distance:.2f}" for distance in distances])
+                result_text.append(f" Khoảng cách từ x{i + 1} đến w1, w2, w3 lần lượt là: {distances_str}")
                 for j in range(len(self.weights)):
                     if np.linalg.norm(j - winner_index) <= self.neighborhood_radius:
                         self.weights[j] += self.learning_rate * (sample - self.weights[j])
@@ -1488,7 +1484,7 @@ class MainWindow(QWidget):
                 kohonen_layout.addWidget(self.kohonen_calculate_button)
                 kohonen_layout.addWidget(QLabel("Kết quả:", font=QFont("Arial", 12)))
                 kohonen_layout.addWidget(self.kohonen_result_text, stretch=1)
-                kohonen_layout.addWidget(QLabel("Ảnh thuộc cụm:", font=QFont("Arial", 12)))
+                kohonen_layout.addWidget(QLabel("Tranh thuộc cụm:", font=QFont("Arial", 12)))
                 kohonen_layout.addWidget(self.kohonen_cluster_text, stretch=1)
 
                 tab.setLayout(kohonen_layout)
